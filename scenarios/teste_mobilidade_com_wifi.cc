@@ -1,5 +1,6 @@
 /*
 Teste de mobilidade usando protocolo Wi-Fi
+AP2 liga após 20 s
 */
 
 #include "ns3/core-module.h"
@@ -10,13 +11,13 @@ Teste de mobilidade usando protocolo Wi-Fi
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE("WifiMobilityHandover");
+NS_LOG_COMPONENT_DEFINE("WifiMobilityHandoverControlled");
 
-// BSSIDs globais para comparação
+// BSSIDs globais
 Mac48Address ap1Bssid;
 Mac48Address ap2Bssid;
 
-// callback de associação
+// ===== Callback de associação =====
 void AssocCallback(std::string context, Mac48Address bssid)
 {
     std::cout << "t=" << Simulator::Now().GetSeconds()
@@ -36,6 +37,16 @@ void AssocCallback(std::string context, Mac48Address bssid)
     }
 }
 
+// ===== Função para ligar AP2 =====
+void EnableAp2(Ptr<YansWifiPhy> phy)
+{
+    phy->SetTxPowerStart(16.0);
+    phy->SetTxPowerEnd(16.0);
+
+    std::cout << "t=" << Simulator::Now().GetSeconds()
+              << "s -> AP2 LIGADO\n";
+}
+
 int main(int argc, char *argv[])
 {
     NodeContainer apNodes;
@@ -50,7 +61,7 @@ int main(int argc, char *argv[])
 
     Ptr<ListPositionAllocator> apPos = CreateObject<ListPositionAllocator>();
     apPos->Add(Vector(0.0, 0.0, 0.0));     // AP1
-    apPos->Add(Vector(100.0, 0.0, 0.0));   // AP2
+    apPos->Add(Vector(200.0, 0.0, 0.0));   // AP2
 
     mobilityAp.SetPositionAllocator(apPos);
     mobilityAp.SetMobilityModel("ns3::ConstantPositionMobilityModel");
@@ -63,8 +74,8 @@ int main(int argc, char *argv[])
     Ptr<ConstantVelocityMobilityModel> mob =
         staNode.Get(0)->GetObject<ConstantVelocityMobilityModel>();
 
-    mob->SetPosition(Vector(-50.0, 0.0, 0.0));
-    mob->SetVelocity(Vector(10.0, 0.0, 0.0));
+    mob->SetPosition(Vector(-150.0, 0.0, 0.0));
+    mob->SetVelocity(Vector(5.0, 0.0, 0.0));
 
     // ===== WIFI =====
 
@@ -72,7 +83,12 @@ int main(int argc, char *argv[])
     wifi.SetStandard(WIFI_STANDARD_80211g);
 
     YansWifiPhyHelper phy;
-    YansWifiChannelHelper channel = YansWifiChannelHelper::Default();
+    YansWifiChannelHelper channel;
+
+    channel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
+    channel.AddPropagationLoss("ns3::LogDistancePropagationLossModel",
+                               "Exponent", DoubleValue(4.0));
+
     phy.SetChannel(channel.Create());
 
     WifiMacHelper mac;
@@ -92,10 +108,10 @@ int main(int argc, char *argv[])
 
     // STA
     mac.SetType("ns3::StaWifiMac",
-                "ActiveProbing", BooleanValue(true));
+                "ActiveProbing", BooleanValue(false));
     NetDeviceContainer staDev = wifi.Install(phy, mac, staNode);
 
-    // ===== PEGAR OS BSSIDs =====
+    // ===== PEGAR BSSIDs =====
 
     Ptr<WifiNetDevice> apDevPtr1 = DynamicCast<WifiNetDevice>(apDev1.Get(0));
     Ptr<WifiNetDevice> apDevPtr2 = DynamicCast<WifiNetDevice>(apDev2.Get(0));
@@ -106,17 +122,31 @@ int main(int argc, char *argv[])
     std::cout << "AP1 BSSID: " << ap1Bssid << std::endl;
     std::cout << "AP2 BSSID: " << ap2Bssid << std::endl;
 
+    // ===== DESLIGAR AP2 INICIALMENTE =====
+
+    Ptr<WifiNetDevice> ap2Dev = DynamicCast<WifiNetDevice>(apDev2.Get(0));
+    Ptr<YansWifiPhy> ap2Phy = DynamicCast<YansWifiPhy>(ap2Dev->GetPhy());
+
+    ap2Phy->SetTxPowerStart(0.0);
+    ap2Phy->SetTxPowerEnd(0.0);
+
+    std::cout << "t=0s -> AP2 DESLIGADO\n";
+
     // ===== INTERNET =====
     InternetStackHelper stack;
     stack.Install(apNodes);
     stack.Install(staNode);
 
     // ===== TRACE =====
-    Config::Connect(
-        "/NodeList/2/DeviceList/0/$ns3::WifiNetDevice/Mac/$ns3::StaWifiMac/Assoc",
-        MakeCallback(&AssocCallback));
+    Ptr<WifiNetDevice> staDevPtr = DynamicCast<WifiNetDevice>(staDev.Get(0));
 
-    Simulator::Stop(Seconds(20.0));
+    staDevPtr->GetMac()->TraceConnectWithoutContext(
+        "Assoc", MakeCallback(&AssocCallback));
+
+    // ===== AGENDAR LIGAMENTO DO AP2 =====
+    Simulator::Schedule(Seconds(20.0), &EnableAp2, ap2Phy);
+
+    Simulator::Stop(Seconds(200.0));
     Simulator::Run();
     Simulator::Destroy();
 
