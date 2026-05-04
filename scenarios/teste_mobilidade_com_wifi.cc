@@ -12,25 +12,27 @@ using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("WifiMobilityHandover");
 
+// BSSIDs globais para comparação
+Mac48Address ap1Bssid;
+Mac48Address ap2Bssid;
+
 // callback de associação
 void AssocCallback(std::string context, Mac48Address bssid)
 {
     std::cout << "t=" << Simulator::Now().GetSeconds()
               << "s -> Associou com BSSID: " << bssid << std::endl;
 
-    // você pode mapear manualmente os APs
-    // (vamos assumir ordem de criação)
-    // AP1 = primeiro, AP2 = segundo
-    static bool first = true;
-
-    if (first)
+    if (bssid == ap1Bssid)
     {
         std::cout << ">>> AP1 connected\n";
-        first = false;
+    }
+    else if (bssid == ap2Bssid)
+    {
+        std::cout << ">>> AP2 connected\n";
     }
     else
     {
-        std::cout << ">>> AP2 connected\n";
+        std::cout << ">>> AP desconhecido\n";
     }
 }
 
@@ -44,7 +46,6 @@ int main(int argc, char *argv[])
 
     // ===== MOBILIDADE =====
 
-    // APs fixos
     MobilityHelper mobilityAp;
 
     Ptr<ListPositionAllocator> apPos = CreateObject<ListPositionAllocator>();
@@ -55,7 +56,6 @@ int main(int argc, char *argv[])
     mobilityAp.SetMobilityModel("ns3::ConstantPositionMobilityModel");
     mobilityAp.Install(apNodes);
 
-    // STA móvel
     MobilityHelper mobilitySta;
     mobilitySta.SetMobilityModel("ns3::ConstantVelocityMobilityModel");
     mobilitySta.Install(staNode);
@@ -77,7 +77,6 @@ int main(int argc, char *argv[])
 
     WifiMacHelper mac;
 
-    // SSIDs diferentes
     Ssid ssid1 = Ssid("AP1-network");
     Ssid ssid2 = Ssid("AP2-network");
 
@@ -91,18 +90,28 @@ int main(int argc, char *argv[])
                 "Ssid", SsidValue(ssid2));
     NetDeviceContainer apDev2 = wifi.Install(phy, mac, apNodes.Get(1));
 
-    // STA (pode conectar em qualquer um)
+    // STA
     mac.SetType("ns3::StaWifiMac",
                 "ActiveProbing", BooleanValue(true));
-
     NetDeviceContainer staDev = wifi.Install(phy, mac, staNode);
 
-    // ===== INTERNET STACK (necessário para wifi funcionar direito) =====
+    // ===== PEGAR OS BSSIDs =====
+
+    Ptr<WifiNetDevice> apDevPtr1 = DynamicCast<WifiNetDevice>(apDev1.Get(0));
+    Ptr<WifiNetDevice> apDevPtr2 = DynamicCast<WifiNetDevice>(apDev2.Get(0));
+
+    ap1Bssid = apDevPtr1->GetMac()->GetAddress();
+    ap2Bssid = apDevPtr2->GetMac()->GetAddress();
+
+    std::cout << "AP1 BSSID: " << ap1Bssid << std::endl;
+    std::cout << "AP2 BSSID: " << ap2Bssid << std::endl;
+
+    // ===== INTERNET =====
     InternetStackHelper stack;
     stack.Install(apNodes);
     stack.Install(staNode);
 
-    // ===== TRACE DE ASSOCIAÇÃO =====
+    // ===== TRACE =====
     Config::Connect(
         "/NodeList/2/DeviceList/0/$ns3::WifiNetDevice/Mac/$ns3::StaWifiMac/Assoc",
         MakeCallback(&AssocCallback));
