@@ -18,7 +18,7 @@ Mac48Address ap1Bssid;
 Mac48Address ap2Bssid;
 
 // ===== Callback de associação =====
-void AssocCallback(std::string context, Mac48Address bssid)
+void AssocCallback(Mac48Address bssid)
 {
     std::cout << "t=" << Simulator::Now().GetSeconds()
               << "s -> Associou com BSSID: " << bssid << std::endl;
@@ -74,8 +74,8 @@ int main(int argc, char *argv[])
     Ptr<ConstantVelocityMobilityModel> mob =
         staNode.Get(0)->GetObject<ConstantVelocityMobilityModel>();
 
-    mob->SetPosition(Vector(-150.0, 0.0, 0.0));
-    mob->SetVelocity(Vector(5.0, 0.0, 0.0));
+    mob->SetPosition(Vector(-1500.0, 0.0, 0.0));
+    mob->SetVelocity(Vector(1.0, 0.0, 0.0));
 
     // ===== WIFI =====
 
@@ -146,7 +146,7 @@ int main(int argc, char *argv[])
     // ===== AGENDAR LIGAMENTO DO AP2 =====
     Simulator::Schedule(Seconds(20.0), &EnableAp2, ap2Phy);
 
-    Simulator::Stop(Seconds(200.0));
+    Simulator::Stop(Seconds(10000.0));
     Simulator::Run();
     Simulator::Destroy();
 
