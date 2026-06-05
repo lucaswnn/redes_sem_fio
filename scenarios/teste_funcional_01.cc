@@ -91,7 +91,7 @@ double ComputeSnrDb(double distance, double ambientNoiseDb, double shadowDb)
     return snrDb;
 }
 
-void RunScenario(const Scenario& sc)
+void RunScenario(const Scenario &sc)
 {
     uint32_t nAPs = 6;
     double simTime = 35.0;
@@ -101,14 +101,13 @@ void RunScenario(const Scenario& sc)
     double recoveryBaseTime = 0.05;
 
     std::vector<ApPosition> apsPos =
-    {
-        {0.0,  0.0,  2.8},
-        {10.0, 0.0,  2.8},
-        {20.0, 0.0,  2.8},
-        {0.0,  10.0, 2.8},
-        {10.0, 10.0, 2.8},
-        {20.0, 10.0, 2.8}
-    };
+        {
+            {0.0, 0.0, 2.8},
+            {10.0, 0.0, 2.8},
+            {20.0, 0.0, 2.8},
+            {0.0, 10.0, 2.8},
+            {10.0, 10.0, 2.8},
+            {20.0, 10.0, 2.8}};
 
     NodeContainer aps;
     aps.Create(nAPs);
@@ -198,7 +197,7 @@ void RunScenario(const Scenario& sc)
     double qosDelaySum = 0.0;
     int qosSamples = 0;
 
-std::string tsFile = "analysis/" + sc.name + "_timeseries.csv";
+    std::string tsFile = "analysis/" + sc.name + "_timeseries.csv";
     std::ofstream ts(tsFile);
 
     ts << "time,x,y,servingAp,bestAp,"
@@ -374,7 +373,7 @@ std::string tsFile = "analysis/" + sc.name + "_timeseries.csv";
             candidateTimer = 0.0;
         }
 
-/*
+        /*
          * QoS sensível ao handover:
          * - throughput reduz durante transição, preparação e execução de HO;
          * - delay aumenta durante HO e recuperação;
