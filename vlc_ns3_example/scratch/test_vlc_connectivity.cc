@@ -4,7 +4,7 @@
 #include "ns3/mobility-module.h"
 #include "ns3/vlc-channel-helper.h"
 #include "ns3/vlc-device-helper.h"
-#include "ns3/v4ping-helper.h"
+#include "ns3/ping-helper.h"
 #include <iostream>
 
 using namespace ns3;
@@ -86,8 +86,8 @@ int main(int argc, char *argv[]) {
     std::cout << "   - Nó 1: " << interfaces.GetAddress(1) << std::endl;
     
     // Teste de ping do Nó 0 para o Nó 1
-    V4PingHelper ping(interfaces.GetAddress(1));
-    ping.SetAttribute("Verbose", BooleanValue(true));
+    PingHelper ping(interfaces.GetAddress(1));
+    ping.SetAttribute("VerboseMode", EnumValue(Ping::VerboseMode::VERBOSE));
     ping.SetAttribute("Interval", TimeValue(Seconds(1.0)));
     ping.SetAttribute("Size", UintegerValue(56));
     

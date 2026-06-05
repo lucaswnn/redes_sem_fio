@@ -5,6 +5,7 @@
 #include "ns3/vlc-device-helper.h"
 #include "ns3/mobility-module.h"
 #include "ns3/applications-module.h"
+#include "ns3/olsr-helper.h"
 #include <iostream>
 
 using namespace ns3;
