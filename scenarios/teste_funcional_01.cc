@@ -3,8 +3,12 @@
 #include "ns3/internet-module.h"
 #include "ns3/mobility-module.h"
 #include "ns3/applications-module.h"
-#include "ns3/csma-module.h"
 #include "ns3/flow-monitor-module.h"
+
+#include "ns3/vlc-device-helper.h"
+#include "ns3/vlc-channel-helper.h"
+#include "ns3/vlc-mobility-model.h"
+#include "ns3/vlc-error-model.h"
 
 #include <cmath>
 #include <fstream>
@@ -15,7 +19,7 @@
 #include <cstdlib>
 #include <random>
 
-using namespace ns3;
+NS_LOG_COMPONENT_DEFINE("VlcHandoverExperiment");
 
 struct Scenario
 {
@@ -28,6 +32,136 @@ struct Scenario
     double ambientNoiseDb;
     double shadowStdDb;
 };
+
+class VlcHandoverScenario
+{
+public:
+    VlcHandoverScenario(const Scenario &sc);
+    void CreateNodes();
+    void CreateMobility();
+    void CreateVlcDevices();
+    void CreateChannels();
+    void InstallInternet();
+
+private:
+    Scenario m_sc;
+    uint32_t m_nAps;
+    ns3::NodeContainer m_aps;
+    ns3::NodeContainer m_ue;
+    ns3::Ptr<ns3::VlcDeviceHelper> m_devHelper;
+    ns3::Ptr<ns3::VlcChannelHelper> m_chHelper;
+    std::vector<ns3::NetDeviceContainer> m_devs;
+};
+
+VlcHandoverScenario::VlcHandoverScenario(const Scenario &sc) : m_nAps(6),
+                                                               m_sc(sc) {}
+
+void VlcHandoverScenario::CreateNodes()
+{
+    m_aps.Create(m_nAps);
+    m_ue.Create(1);
+    m_all_nodes.Add(m_aps);
+    m_all_nodes.Add(m_ue);
+}
+
+void VlcHandoverScenario::CreateMobility()
+{
+    std::vector<ns3::Vector> apsPos =
+        {ns3::Vector(0.0, 0.0, 2.8),
+         ns3::Vector(10.0, 0.0, 2.8),
+         ns3::Vector(20.0, 0.0, 2.8),
+         ns3::Vector(0.0, 10.0, 2.8),
+         ns3::Vector(10.0, 10.0, 2.8),
+         ns3::Vector(20.0, 10.0, 2.8)};
+
+    ns3::MobilityHelper mobility;
+    ns3::Ptr<ns3::ListPositionAllocator> positionAlloc = ns3::CreateObject<ns3::ListPositionAllocator>();
+    for (const auto &apPos : apsPos)
+    {
+        positionAlloc->Add(apPos);
+    }
+    mobility.SetPositionAllocator(positionAlloc);
+    mobility.SetMobilityModel("ns3::VlcMobilityModel");
+    mobility.Install(m_aps);
+
+    ns3::MobilityHelper mobilityUe;
+    mobilityUe.SetMobilityModel("ns3::VlcMobilityModel");
+    mobilityUe.Install(m_ue);
+
+    ns3::Ptr<ns3::VlcMobilityModel> ueMob =
+        m_ue.Get(0)->GetObject<ns3::VlcMobilityModel>();
+
+    ueMob->SetPosition(ns3::Vector(0.0, 4.0, 1.2));
+    ueMob->SetVelocityAndAcceleration(ns3::Vector(m_sc.speed, 0.0, 0.0), ns3::Vector());
+}
+
+void VlcHandoverScenario::CreateVlcDevices()
+{
+    for (uint32_t i = 0; i < m_nAps; i++)
+    {
+        std::string tx = "TX" + std::to_string(i);
+        std::string rx = "RX" + std::to_string(i);
+
+        m_devHelper->CreateTransmitter(tx);
+        m_devHelper->SetTXSignal(tx, 1000, 0.5, 0, 9.25e-5, 0);
+        m_devHelper->SetTrasmitterParameter(tx, "Bias", 0);
+        m_devHelper->SetTrasmitterParameter(tx, "SemiAngle", 35);
+        m_devHelper->SetTrasmitterParameter(tx, "Azimuth", 0);
+        m_devHelper->SetTrasmitterParameter(tx, "Elevation", 180.0);
+        m_devHelper->SetTrasmitterPosition(tx, 0.0, 0.0, 52.0);
+        m_devHelper->SetTrasmitterParameter(tx, "Gain", 70);
+        m_devHelper->SetTrasmitterParameter(tx, "DataRateInMBPS", 0.3);
+
+        m_devHelper->CreateReceiver(rx);
+        m_devHelper->SetReceiverParameter(rx, "FilterGain", 1);
+        m_devHelper->SetReceiverParameter(rx, "RefractiveIndex", 1.5);
+        m_devHelper->SetReceiverParameter(rx, "FOVAngle", 28.5);
+        m_devHelper->SetReceiverParameter(rx, "ConcentrationGain", 0);
+        m_devHelper->SetReceiverParameter(rx, "PhotoDetectorArea", 1.3e-5);
+        m_devHelper->SetReceiverParameter(rx, "RXGain", 0);
+        m_devHelper->SetReceiverParameter(rx, "Beta", 1);
+        m_devHelper->SetReceiverParameter(rx, "SetModulationScheme", ns3::VlcErrorModel::OOK);
+    }
+}
+
+void VlcHandoverScenario::CreateChannels()
+{
+    for (uint32_t i = 0; i < m_nAps; i++)
+    {
+        std::string ch = "CH" + std::to_string(i);
+        std::string tx = "TX" + std::to_string(i);
+        std::string rx = "RX" + std::to_string(i);
+
+        m_chHelper->CreateChannel(ch);
+        m_chHelper->SetPropagationLoss(ch, "VlcPropagationLoss");
+        m_chHelper->SetPropagationDelay(ch, 2);
+        m_chHelper->SetChannelParameter(ch, "TEMP", 295);
+        m_chHelper->SetChannelParameter(ch, "BAND_FACTOR_NOISE_SIGNAL", 10.0);
+        m_chHelper->SetChannelWavelength(ch, 380, 780);
+        m_chHelper->SetChannelParameter(ch, "ElectricNoiseBandWidth", 3 * 1e5);
+        m_chHelper->AttachTransmitter(ch, tx, m_devHelper);
+        m_chHelper->AttachReceiver(ch, rx, m_devHelper);
+
+        ns3::NetDeviceContainer devs = m_chHelper->Install(m_aps.Get(i),
+                                                           m_ue.Get(0),
+                                                           m_devHelper,
+                                                           m_chHelper,
+                                                           tx,
+                                                           rx,
+                                                           ch);
+
+        m_devs.push_back(devs);
+    }
+}
+
+void VlcHandoverScenario::InstallInternet()
+{
+ns3::Ipv4AddressHelper ipv4;
+		ipv4.SetBase("10.1.3.0", "255.255.255.0");
+		ipv4.Assign(dev0);
+		ipv4.SetBase("10.1.2.0", "255.255.255.0");
+		Ipv4InterfaceContainer ipInterfs = ipv4.Assign(dev1);
+}
 
 struct ApPosition
 {
@@ -101,13 +235,12 @@ void RunScenario(const Scenario &sc)
     double recoveryBaseTime = 0.05;
 
     std::vector<ApPosition> apsPos =
-        {
-            {0.0, 0.0, 2.8},
-            {10.0, 0.0, 2.8},
-            {20.0, 0.0, 2.8},
-            {0.0, 10.0, 2.8},
-            {10.0, 10.0, 2.8},
-            {20.0, 10.0, 2.8}};
+        {{0.0, 0.0, 2.8},
+         {10.0, 0.0, 2.8},
+         {20.0, 0.0, 2.8},
+         {0.0, 10.0, 2.8},
+         {10.0, 10.0, 2.8},
+         {20.0, 10.0, 2.8}};
 
     NodeContainer aps;
     aps.Create(nAPs);
