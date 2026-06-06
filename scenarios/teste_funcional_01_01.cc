@@ -49,6 +49,9 @@ private:
     void CreateChannels();
     void InstallInternet();
     void InstallApplication();
+    void PrintApInfo();
+    void SetDebug();
+
     Scenario m_sc;
     uint32_t m_nAps;
     ns3::NodeContainer m_aps;
@@ -57,8 +60,10 @@ private:
     ns3::NodeContainer m_allNodes;
     ns3::VlcDeviceHelper m_devHelper;
     ns3::VlcChannelHelper m_chHelper;
+    ns3::Ptr<ns3::VlcNetDevice> m_ueDev;
     ns3::NetDeviceContainer m_devs;
     ns3::Ipv4InterfaceContainer m_ipInterfs;
+    std::vector<ns3::Ipv4Address> m_apIps;
 };
 
 VlcHandoverScenario::VlcHandoverScenario(const Scenario &sc) : m_sc(sc),
@@ -79,6 +84,7 @@ VlcHandoverScenario::VlcHandoverScenario(const Scenario &sc) : m_sc(sc),
     CreateChannels();
     InstallInternet();
     InstallApplication();
+    SetDebug();
 }
 
 void VlcHandoverScenario::CreateNodes()
@@ -109,7 +115,7 @@ void VlcHandoverScenario::CreateMobility()
     ns3::Ptr<ns3::VlcMobilityModel> ueMob =
         m_ue.Get(0)->GetObject<ns3::VlcMobilityModel>();
 
-    ueMob->SetPosition(ns3::Vector(0.0, 4.0, 1.2));
+    ueMob->SetPosition(ns3::Vector(0.0, 5.0, 1.2));
     ueMob->SetAzimuth(0);
     ueMob->SetElevation(90);
     ueMob->SetVelocityAndAcceleration(ns3::Vector(m_sc.speed, 0.0, 0.0), ns3::Vector());
@@ -120,7 +126,6 @@ void VlcHandoverScenario::CreateVlcDevices()
     for (uint32_t i = 0; i < m_nAps; i++)
     {
         std::string tx = "TX" + std::to_string(i);
-        std::string rx = "RX" + std::to_string(i);
 
         m_devHelper.CreateTransmitter(tx);
         m_devHelper.SetTXSignal(tx, 1000, 0.5, 0, 9.25e-5, 0);
@@ -131,33 +136,35 @@ void VlcHandoverScenario::CreateVlcDevices()
         m_devHelper.SetTrasmitterParameter(tx, "Gain", 70);
         m_devHelper.SetTrasmitterParameter(tx, "DataRateInMBPS", 0.3);
 
-        auto txMob = m_aps.Get(1)->GetObject<ns3::VlcMobilityModel>();
+        auto txMob = m_aps.Get(i)->GetObject<ns3::VlcMobilityModel>();
         auto txPos = txMob->GetPosition();
         m_devHelper.SetTrasmitterPosition(tx,
                                           txPos.x,
                                           txPos.y,
                                           txPos.z);
-
-        m_devHelper.CreateReceiver(rx);
-        m_devHelper.SetReceiverParameter(rx, "FilterGain", 1);
-        m_devHelper.SetReceiverParameter(rx, "RefractiveIndex", 1.5);
-        m_devHelper.SetReceiverParameter(rx, "FOVAngle", 28.5);
-        m_devHelper.SetReceiverParameter(rx, "ConcentrationGain", 0);
-        m_devHelper.SetReceiverParameter(rx, "PhotoDetectorArea", 1.3e-5);
-        m_devHelper.SetReceiverParameter(rx, "RXGain", 0);
-        m_devHelper.SetReceiverParameter(rx, "Beta", 1);
-        m_devHelper.SetReceiverParameter(rx, "SetModulationScheme", ns3::VlcErrorModel::OOK);
-
-        auto rxMob = m_ue.Get(0)->GetObject<ns3::VlcMobilityModel>();
-        auto uePos = rxMob->GetPosition();
-        m_devHelper.SetReceiverPosition(rx,
-                                        uePos.x,
-                                        uePos.y,
-                                        uePos.z);
-
-        auto rxDevice = m_devHelper.GetReceiver(rx);
-        rxDevice->SetMobilityModel(rxMob);
     }
+
+    std::string rx = "RX";
+    m_devHelper.CreateReceiver(rx);
+    m_devHelper.SetReceiverParameter(rx, "FilterGain", 1);
+    m_devHelper.SetReceiverParameter(rx, "RefractiveIndex", 1.5);
+    m_devHelper.SetReceiverParameter(rx, "FOVAngle", 28.5);
+    m_devHelper.SetReceiverParameter(rx, "ConcentrationGain", 0);
+    m_devHelper.SetReceiverParameter(rx, "PhotoDetectorArea", 1.3e-5);
+    m_devHelper.SetReceiverParameter(rx, "RXGain", 0);
+    m_devHelper.SetReceiverParameter(rx, "Beta", 1);
+    m_devHelper.SetReceiverParameter(rx, "SetModulationScheme", ns3::VlcErrorModel::OOK);
+
+    auto rxMob = m_ue.Get(0)->GetObject<ns3::VlcMobilityModel>();
+    auto uePos = rxMob->GetPosition();
+    m_devHelper.SetReceiverPosition(rx,
+                                    uePos.x,
+                                    uePos.y,
+                                    uePos.z);
+
+    auto rxDevice = m_devHelper.GetReceiver(rx);
+    m_ueDev = rxDevice;
+    rxDevice->SetMobilityModel(rxMob);
 }
 
 void VlcHandoverScenario::CreateChannels()
@@ -166,7 +173,7 @@ void VlcHandoverScenario::CreateChannels()
     {
         std::string ch = "CH" + std::to_string(i);
         std::string tx = "TX" + std::to_string(i);
-        std::string rx = "RX" + std::to_string(i);
+        std::string rx = "RX";
 
         m_chHelper.CreateChannel(ch);
         m_chHelper.SetPropagationLoss(ch, "VlcPropagationLoss");
@@ -198,24 +205,82 @@ void VlcHandoverScenario::InstallInternet()
     ns3::Ipv4AddressHelper ipv4;
     ipv4.SetBase("10.1.1.0", "255.255.255.0");
     m_ipInterfs = ipv4.Assign(m_devs);
+
+    std::cout << "Configuração:" << std::endl;
+    std::cout << "# devices: " << m_devs.GetN() << "\n";
+    std::cout << "# interfaces: " << m_ipInterfs.GetN() << "\n";
+
+    auto ueId = m_ue.Get(0)->GetId();
+    for (uint32_t i = 0; i < m_devs.GetN(); i++)
+    {
+        auto dev = m_devs.Get(i);
+        auto id = dev->GetNode()->GetId();
+        if (id != ueId)
+        {
+            m_apIps.push_back(m_ipInterfs.GetAddress(i));
+        }
+    }
 }
 
 void VlcHandoverScenario::InstallApplication()
 {
-    ns3::PingHelper ping(m_ipInterfs.GetAddress(0));
-    ping.SetAttribute("VerboseMode", ns3::EnumValue(ns3::Ping::VerboseMode::VERBOSE));
-    ping.SetAttribute("Interval", ns3::TimeValue(ns3::Seconds(1.0)));
-    ping.SetAttribute("Size", ns3::UintegerValue(56));
+    ns3::ApplicationContainer app;
+    for (uint32_t i = 0; i < m_nAps; i++)
+    {
+        ns3::PingHelper ping(m_apIps[i]);
+        ping.SetAttribute("VerboseMode", ns3::EnumValue(ns3::Ping::VerboseMode::VERBOSE));
+        ping.SetAttribute("Interval", ns3::TimeValue(ns3::Seconds(1.0)));
+        ping.SetAttribute("Size", ns3::UintegerValue(56));
 
-    ns3::ApplicationContainer app = ping.Install(m_ue.Get(0));
-    app.Start(ns3::Seconds(2.0));
-    app.Stop(ns3::Seconds(10.0));
+        app.Add(ping.Install(m_ue.Get(0)));
+    }
+
+    app.Start(ns3::Seconds(0.0));
+    app.Stop(ns3::Seconds(20.0));
+}
+
+void PrintUeInfo(ns3::Ptr<ns3::VlcNetDevice> dev)
+{
+    auto mob = dev->GetMobilityModel();
+    auto pos = mob->GetPosition();
+
+    std::cout
+        << "t=" << ns3::Simulator::Now().GetSeconds()
+        << " x=" << pos.x
+        << " y=" << pos.y
+        << " z=" << pos.z
+        << "\n";
+
+    ns3::Simulator::Schedule(ns3::Seconds(0.5),
+                             &PrintUeInfo,
+                             dev);
+}
+
+void VlcHandoverScenario::PrintApInfo()
+{
+    for (uint32_t i = 0; i < m_nAps; i++)
+    {
+        auto ap = m_aps.Get(i);
+        auto mob = ap->GetObject<ns3::MobilityModel>();
+        auto pos = mob->GetPosition();
+        std::cout
+            << "IP: " << m_apIps[i]
+            << " (" << pos.x << ", " << pos.y << ", " << pos.z << ")\n";
+    }
+}
+
+void VlcHandoverScenario::SetDebug()
+{
+    PrintApInfo();
+    ns3::Simulator::Schedule(ns3::Seconds(0.0),
+                             &PrintUeInfo,
+                             m_ueDev);
 }
 
 void VlcHandoverScenario::RunSimulation()
 {
 
-    ns3::Simulator::Stop(ns3::Seconds(15.0));
+    ns3::Simulator::Stop(ns3::Seconds(20.0));
     ns3::Simulator::Run();
     ns3::Simulator::Destroy();
 }
