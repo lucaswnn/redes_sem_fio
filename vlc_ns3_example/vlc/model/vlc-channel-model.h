@@ -24,8 +24,8 @@
 namespace ns3
 {
 
-class VlcChannel : public Channel
-{
+  class VlcChannel : public Channel
+  {
   public:
     VlcChannel();
 
@@ -81,7 +81,7 @@ class VlcChannel : public Channel
 
     void CalculateSNR(); // calculates the SNR value
 
-    double GetSNR() const; // returns the signal-to-noise ratio (SNR)
+    double GetSNR(); // returns the signal-to-noise ratio (SNR)
 
     void SetElectricNoiseBandWidth(double b); // sets the noise bandwidth
 
@@ -118,19 +118,19 @@ class VlcChannel : public Channel
 
     class WirelessLink
     { // wireless link class for storing a sender and receiver vlc device.
-      public:
-        WirelessLink()
-            : m_src(0),
-              m_dst(0)
-        {
-        }
+    public:
+      WirelessLink()
+          : m_src(0),
+            m_dst(0)
+      {
+      }
 
-        Ptr<VlcNetDevice> m_src; //!< First NetDevice
-        Ptr<VlcNetDevice> m_dst; //!< Second NetDevice
+      Ptr<VlcNetDevice> m_src; //!< First NetDevice
+      Ptr<VlcNetDevice> m_dst; //!< Second NetDevice
     };
 
     WirelessLink m_link[2];
-};
+  };
 
 } // namespace ns3
 
