@@ -229,7 +229,7 @@ namespace ns3
                                   std::sin(rxMob->GetElevation()));
 
         auto cosInc = -(vLOS.x * rxNorm.x + vLOS.y * rxNorm.y + vLOS.z * rxNorm.z);
-        std::cout << cosInc << "/";
+
         if (cosInc <= cosFOV)
         {
             return 0.0;
