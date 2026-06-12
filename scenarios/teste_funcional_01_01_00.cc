@@ -19,38 +19,26 @@
 #include <algorithm>
 #include <cstdlib>
 #include <random>
-#include <functional>
 
 NS_LOG_COMPONENT_DEFINE("VlcHandoverExperiment");
-
-struct SnrRecord
-{
-    double time;
-    std::vector<double> snrs;
-};
-
-using MobilityFunc = std::function<ns3::Vector(double time, ns3::Vector currentPos)>;
-using HandoverFunc = std::function<int32_t(double time,
-                                           const std::vector<SnrRecord> &snrhist,
-                                           int32_t currentAp)>;
 
 struct Scenario
 {
     std::string name;
-    double simDurationSeconds;
-    double scheduleIntervalSeconds;
-    double metricsIntervalSeconds;
     std::string strategy;
+    double speed;
     double thresholdDb;
     double hysteresisDb;
     double ttt;
     double ambientNoiseDb;
     double shadowStdDb;
+};
 
-    std::vector<ns3::Vector> apPositions;
-    ns3::Vector ueFirstPosition;
-    MobilityFunc ueMobilityFunc;
-    HandoverFunc handoverFunc;
+struct UeData
+{
+    ns3::Ptr<ns3::Node> node;
+    ns3::Ptr<ns3::VlcDeviceHelper> devHelper;
+    ns3::Ptr<ns3::VlcChannelHelper> chHelper;
 };
 
 class VlcHandoverScenario
@@ -67,19 +55,13 @@ private:
                      std::string tx,
                      std::string rx,
                      uint32_t node);
-
     void CreateNodes();
     void CreateMobility();
     void CreateVlcDevices();
     void CreateChannels();
     void InstallInternet();
-
     void PrintApInfo();
     void SetSchedule();
-
-    void UpdateUeMobility();
-    void CollectMetrics();
-    void EvaluateHandover();
 
     Scenario m_sc;
     uint32_t m_nAps;
@@ -87,25 +69,29 @@ private:
     ns3::NodeContainer m_ue;
     std::vector<ns3::Vector> m_apsPos;
     ns3::NodeContainer m_allNodes;
-
     ns3::VlcDeviceHelper m_devHelper;
     ns3::VlcChannelHelper m_chHelper;
-
+    UeData m_ueData;
     ns3::NetDeviceContainer m_devs;
     ns3::Ipv4InterfaceContainer m_ipInterfs;
     std::vector<ns3::Ipv4Address> m_apIps;
-
-    int32_t m_currentApIndex;
-    std::vector<SnrRecord> m_snrHistory;
+    uint32_t m_currentChIndex;
 };
 
+void PrintUeInfo(UeData ueData);
+
 VlcHandoverScenario::VlcHandoverScenario(const Scenario &sc) : m_sc(sc),
-                                                               m_nAps(sc.apPositions.size()),
-                                                               m_apsPos(sc.apPositions),
-                                                               m_currentApIndex(-1)
+                                                               m_nAps(6)
 
 {
     std::cout << "Iniciando preparo da simulação...\n";
+    m_apsPos =
+        {ns3::Vector(0.0, 0.0, 2.8),
+         ns3::Vector(10.0, 0.0, 2.8),
+         ns3::Vector(20.0, 0.0, 2.8),
+         ns3::Vector(0.0, 10.0, 2.8),
+         ns3::Vector(10.0, 10.0, 2.8),
+         ns3::Vector(20.0, 10.0, 2.8)};
 
     CreateNodes();
     CreateMobility();
@@ -113,8 +99,6 @@ VlcHandoverScenario::VlcHandoverScenario(const Scenario &sc) : m_sc(sc),
     CreateChannels();
     InstallInternet();
     SetSchedule();
-
-    std::cout << "Preparo inicial da simulação concluído.\n";
 }
 
 void VlcHandoverScenario::ConfigureRx(std::string rx)
@@ -164,8 +148,7 @@ void VlcHandoverScenario::ConfigureCh(std::string ch,
                                       std::string rx,
                                       uint32_t node)
 {
-    std::cout << "Criando canal " << tx << "<->" << rx << "...\n";
-
+    std::cout << "Criando canal " << tx << "<-->" << rx << "...\n";
     m_chHelper.CreateChannel(ch);
     m_chHelper.SetPropagationLoss(ch, "VlcPropagationLoss");
     m_chHelper.SetPropagationDelay(ch, 2);
@@ -185,26 +168,22 @@ void VlcHandoverScenario::ConfigureCh(std::string ch,
                                                       ch);
 
     m_devs.Add(devs);
-
-    std::cout << "Canal " << tx << " <-> " << rx << " criado.\n";
 }
 
 void VlcHandoverScenario::CreateNodes()
 {
     std::cout << "Iniciando criação dos nós...\n";
-
     m_aps.Create(m_nAps);
     m_ue.Create(1);
     m_allNodes.Add(m_aps);
     m_allNodes.Add(m_ue);
-
+    m_ueData.node = m_ue.Get(0);
     std::cout << "Criação dos nós feita com sucesso.\n";
 }
 
 void VlcHandoverScenario::CreateMobility()
 {
     std::cout << "Iniciando configuração de mobilidade...\n";
-
     ns3::MobilityHelper mobility;
     ns3::Ptr<ns3::ListPositionAllocator> positionAlloc = ns3::CreateObject<ns3::ListPositionAllocator>();
     for (const auto &apPos : m_apsPos)
@@ -222,17 +201,16 @@ void VlcHandoverScenario::CreateMobility()
     ns3::Ptr<ns3::VlcMobilityModel> ueMob =
         m_ue.Get(0)->GetObject<ns3::VlcMobilityModel>();
 
-    ueMob->SetPosition(m_sc.ueFirstPosition);
+    ueMob->SetPosition(ns3::Vector(0.0, 0.0, 1.2));
     ueMob->SetAzimuth(0);
     ueMob->SetElevation(90);
-
+    ueMob->SetVelocityAndAcceleration(ns3::Vector(m_sc.speed, 0.0, 0.0), ns3::Vector());
     std::cout << "Configuração de mobilidade feita com sucesso.\n";
 }
 
 void VlcHandoverScenario::CreateVlcDevices()
 {
     std::cout << "Iniciando a criação dos dispositivos VLC...\n";
-
     for (uint32_t i = 0; i < m_nAps; i++)
     {
         std::string tx = "TX_" + std::to_string(i);
@@ -245,13 +223,13 @@ void VlcHandoverScenario::CreateVlcDevices()
         ConfigureRx(rx);
     }
 
+    m_ueData.devHelper = &m_devHelper;
     std::cout << "Criação dos dispositivos VLC feita com sucesso.\n";
 }
 
 void VlcHandoverScenario::CreateChannels()
 {
     std::cout << "Iniciando a criação dos canais ópticos...\n";
-
     for (uint32_t i = 0; i < m_nAps; i++)
     {
         std::string ch = "CH_" + std::to_string(i);
@@ -261,6 +239,7 @@ void VlcHandoverScenario::CreateChannels()
         ConfigureCh(ch, tx, rx, i);
     }
 
+    m_ueData.chHelper = &m_chHelper;
     std::cout << "Criação dos canais ópticos feita com sucesso.\n";
 }
 
@@ -305,146 +284,59 @@ void VlcHandoverScenario::PrintApInfo()
 void VlcHandoverScenario::SetSchedule()
 {
     PrintApInfo();
-
     ns3::Simulator::Schedule(ns3::Seconds(0.0),
-                             &VlcHandoverScenario::UpdateUeMobility,
-                             this);
-
-    ns3::Simulator ::Schedule(ns3::Seconds(0.0),
-                              &VlcHandoverScenario::CollectMetrics,
-                              this);
-
-    ns3::Simulator::Schedule(ns3::Seconds(0.0),
-                             &VlcHandoverScenario::EvaluateHandover,
-                             this);
+                             &PrintUeInfo,
+                             m_ueData);
 }
 
 void VlcHandoverScenario::RunSimulation()
 {
 
-    ns3::Simulator::Stop(ns3::Seconds(m_sc.simDurationSeconds));
+    ns3::Simulator::Stop(ns3::Seconds(20.0));
     ns3::Simulator::Run();
     ns3::Simulator::Destroy();
 }
 
-void VlcHandoverScenario::UpdateUeMobility()
+void PrintUeInfo(UeData ueData)
 {
-    double t = ns3::Simulator::Now().GetSeconds();
-
-    auto ueMob = m_ue.Get(0)->GetObject<ns3::VlcMobilityModel>();
-    auto curPos = ueMob->GetPosition();
-    auto newPos = m_sc.ueMobilityFunc(t, curPos);
-
-    ueMob->SetPosition(newPos);
-
-    for (uint32_t i = 0; i < m_nAps; i++)
-    {
-        std::string rx = "RX_" + std::to_string(i);
-        auto ueRxMob = m_devHelper.GetReceiver(rx);
-        ueRxMob->SetPosition(newPos);
-    }
-
-    ns3::Simulator::Schedule(ns3::Seconds(m_sc.scheduleIntervalSeconds),
-                             &VlcHandoverScenario::UpdateUeMobility,
-                             this);
-}
-
-void VlcHandoverScenario::CollectMetrics()
-{
-    double t = ns3::Simulator::Now().GetSeconds();
-    auto ueMob = m_ue.Get(0)->GetObject<ns3::VlcMobilityModel>();
-    auto pos = ueMob->GetPosition();
+    auto rx = ueData.devHelper->GetReceiver("RX_0");
+    auto mob = rx->GetMobilityModel();
+    auto pos = mob->GetPosition();
+    auto chHelper = ueData.chHelper;
 
     std::cout
-        << "t=" << t
+        << "t=" << ns3::Simulator::Now().GetSeconds()
         << " x=" << pos.x
         << " y=" << pos.y
         << " z=" << pos.z
         << "\n";
 
-    SnrRecord currentRecord;
-    currentRecord.time = t;
-
-    for (uint32_t i = 0; i < m_nAps; i++)
+    for (uint32_t i = 0; i < 6; i++)
     {
-        std::string ch = "CH_" + std::to_string(i);
-        double snrVal = m_chHelper.GetChannelSNR(ch);
-        currentRecord.snrs.push_back(snrVal);
-        std::cout << "SNR[" << i << "]=" << snrVal << "\n";
+        auto ch = "CH_" + std::to_string(i);
+        std::cout
+            << "SNR[" << i << "]="
+            << chHelper->GetChannelSNR(ch) << "\n";
     }
 
-    m_snrHistory.push_back(currentRecord);
+    std::cout << "---------\n\n";
 
-    ns3::Simulator::Schedule(ns3::Seconds(m_sc.metricsIntervalSeconds),
-                             &VlcHandoverScenario::CollectMetrics,
-                             this);
-}
-
-void VlcHandoverScenario::EvaluateHandover()
-{
-    double t = ns3::Simulator::Now().GetSeconds();
-
-    if (m_sc.handoverFunc)
-    {
-        int32_t target = m_sc.handoverFunc(t, m_snrHistory, m_currentApIndex);
-        if (target != m_currentApIndex)
-        {
-            std::cout << "Handover: de AP " << m_currentApIndex
-                      << " para AP " << target << "\n";
-            m_currentApIndex = target;
-        }
-    }
-
-    ns3::Simulator::Schedule(ns3::Seconds(m_sc.scheduleIntervalSeconds),
-                             &VlcHandoverScenario::EvaluateHandover,
-                             this);
+    ns3::Simulator::Schedule(ns3::Seconds(0.3),
+                             &PrintUeInfo,
+                             ueData);
 }
 
 int main(int argc, char **argv)
 {
-    double vel = 1.0;
-    std::string name = "Baseline_v" + std::to_string((int)vel);
-    double simDurationSeconds = 20.0;
-    double scheduleIntervalSeconds = 0.1;
-    double metricsIntervalSeconds = 1.0;
-    std::string strategy = "Baseline";
-    double thresholdDb = 15.0;
-    double hysteresisDb = 0.0;
-    double ttt = 0.1;
-    double ambientNoiseDb = 0.0;
-    double shadowStdDb = 0.5;
-
-    std::vector apPositions = {ns3::Vector(0.0, 0.0, 2.8),
-                               ns3::Vector(10.0, 0.0, 2.8),
-                               ns3::Vector(20.0, 0.0, 2.8),
-                               ns3::Vector(0.0, 10.0, 2.8),
-                               ns3::Vector(10.0, 10.0, 2.8),
-                               ns3::Vector(20.0, 10.0, 2.8)};
-
-    ns3::Vector ueFirstPosition = ns3::Vector(0.0, 0.0, 1.2);
-
-    MobilityFunc ueMobilityFunc = [vel](double t, ns3::Vector curPos)
-    { return ns3::Vector(vel * t, curPos.y, curPos.z); };
-
-    HandoverFunc handoverFunc = [](double t,
-                                   const std::vector<SnrRecord> &snrHist,
-                                   int32_t curAp)
-    { return -1; };
-
-    Scenario sc = {name,
-                   simDurationSeconds,
-                   scheduleIntervalSeconds,
-                   metricsIntervalSeconds,
-                   strategy,
-                   thresholdDb,
-                   hysteresisDb,
-                   ttt,
-                   ambientNoiseDb,
-                   shadowStdDb,
-                   apPositions,
-                   ueFirstPosition,
-                   ueMobilityFunc,
-                   handoverFunc};
+    double v = 1.0;
+    Scenario sc = {"Baseline_v" + std::to_string((int)v),
+                   "Baseline",
+                   v,
+                   15.0,
+                   0.0,
+                   0.10,
+                   0.0,
+                   0.5};
 
     auto simulation = VlcHandoverScenario(sc);
     simulation.RunSimulation();
