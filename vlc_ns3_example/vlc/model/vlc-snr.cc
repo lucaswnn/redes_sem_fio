@@ -93,12 +93,12 @@ namespace ns3
 	// Gol: open-loop voltage gain
 	// gamma: FET channel noise factor
 	// gm: FET transconductance [s]
-	void VlcSnr::CalculateNoiseVar(double A, double resp)
+	void VlcSnr::CalculateNoiseVar(double A, double resp, double ambientNoisePower)
 	{
 		NS_LOG_FUNCTION(this);
 
 		// res = IntegralRes() / IntegralPlanck();
-		res = 0.2;
+		// res = 0.2;
 
 		static const double q = 1.602176487e-19; // electronic charge [Coulombs]
 		static const double k = 1.38064852e-23;	 // Boltzmann constant [m^2 kg s^-2 K^-1]
@@ -118,7 +118,7 @@ namespace ns3
 		// thermal noise variance
 		thermal_var = (8 * M_PI * k * temp * Cpd * A * I2 * (std::pow(B, 2)) / Gol) + (16 * (std::pow(M_PI, 2)) * k * temp * gamma * (std::pow(Cpd, 2)) * (std::pow(A, 2)) * I3 * (std::pow(B, 3)) / gm);
 
-		noise_var = shot_var + thermal_var;
+		noise_var = shot_var + thermal_var + ambientNoisePower;
 	}
 
 	// caluclates the SNR value using received power, responsivity and noise variance

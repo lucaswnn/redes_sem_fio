@@ -176,6 +176,9 @@ void VlcHandoverScenario::ConfigureCh(std::string ch,
     m_chHelper.AttachTransmitter(ch, tx, &m_devHelper);
     m_chHelper.AttachReceiver(ch, rx, &m_devHelper);
 
+    double ambientNoisePower = std::pow(10, (m_sc.ambientNoiseDb - 30) / 10);
+    m_chHelper.SetChannelAmbientNoisePower(ch, ambientNoisePower);
+
     ns3::NetDeviceContainer devs = m_chHelper.Install(m_aps.Get(node),
                                                       m_ue.Get(0),
                                                       &m_devHelper,

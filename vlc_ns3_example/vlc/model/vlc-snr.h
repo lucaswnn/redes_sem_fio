@@ -22,9 +22,11 @@ namespace ns3
 		void SetElectricNoiseBandWidth(double b); // sets the noise bandwidth
 		double GetNoiseBandwidth();				  // return the noise bandwidth
 
-		void CalculateNoiseVar(double A, double resp); // calculates the noise variance
-		void CalculateSNR();						   // caluclates the SNR value
-		double GetSNR();							   // returns the signal-to-noise ratio (SNR)
+		void CalculateNoiseVar(double A,
+							   double resp,
+							   double ambientNoisePower); // calculates the noise variance
+		void CalculateSNR();							  // caluclates the SNR value
+		double GetSNR();								  // returns the signal-to-noise ratio (SNR)
 
 	private:
 		// Private methods called by other methods inside the class

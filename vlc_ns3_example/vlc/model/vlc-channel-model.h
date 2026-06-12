@@ -101,10 +101,16 @@ namespace ns3
 
     void Attach(Ptr<VlcNetDevice> device);
 
+    void SetAmbientNoisePower(double ambientNoisePower);
+
+    double GetAmbientNoisePower();
+
   private:
     ns3::Ptr<ns3::PropagationLossModel> m_loss;
 
     double m_distanceBWTXandRX;
+
+    double m_ambientNoisePower;
 
     ns3::Ptr<ns3::PropagationDelayModel> m_delay;
 

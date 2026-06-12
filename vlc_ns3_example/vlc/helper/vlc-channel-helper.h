@@ -14,57 +14,62 @@
 #include "ns3/vlc-tx-net-device.h"
 #include "ns3/object-factory.h"
 
-namespace ns3 {
+namespace ns3
+{
 
-class VlcChannelHelper: public Object {
-public:
-	VlcChannelHelper();
+	class VlcChannelHelper : public Object
+	{
+	public:
+		VlcChannelHelper();
 
-	void CreateChannel(std::string channelName);
+		void CreateChannel(std::string channelName);
 
-	void SetChannelWavelength(std::string channelName, int lower, int upper);
+		void SetChannelWavelength(std::string channelName, int lower, int upper);
 
-	void SetPropagationLoss(std::string channelName,
-			std::string propagationLossType);
+		void SetChannelAmbientNoisePower(std::string cHannelname, double ambientNoisePower);
 
-	void SetPropagationDelay(std::string channelName, double value);
+		void SetPropagationLoss(std::string channelName,
+								std::string propagationLossType);
 
-	void AttachTransmitter(std::string chName, std::string TXDevName,
-			ns3::Ptr<VlcDeviceHelper> devHelper);
+		void SetPropagationDelay(std::string channelName, double value);
 
-	void AttachReceiver(std::string chName, std::string RXDevName,
-			ns3::Ptr<VlcDeviceHelper> devHelper);
+		void AttachTransmitter(std::string chName, std::string TXDevName,
+							   ns3::Ptr<VlcDeviceHelper> devHelper);
 
-	double GetChannelSNR(std::string chName);
+		void AttachReceiver(std::string chName, std::string RXDevName,
+							ns3::Ptr<VlcDeviceHelper> devHelper);
 
-	void SetChannelParameter(std::string chName, std::string paramName,
-			double value);
+		double GetChannelSNR(std::string chName);
 
-	ns3::Ptr<VlcChannel> GetChannel(std::string chName);
+		double GetChannelAmbientNoisePower(std::string chName);
 
-	ns3::Ptr<VlcNetDevice> GetDevice(std::string chName, uint32_t idx);
+		void SetChannelParameter(std::string chName, std::string paramName,
+								 double value);
 
-	ns3::NetDeviceContainer Install(std::string chName, Ptr<Node> a,
-			Ptr<Node> b);
+		ns3::Ptr<VlcChannel> GetChannel(std::string chName);
 
-	NetDeviceContainer Install(Ptr<Node> a, Ptr<Node> b, Ptr<VlcTxNetDevice> tx,
-			Ptr<VlcRxNetDevice> rx);
+		ns3::Ptr<VlcNetDevice> GetDevice(std::string chName, uint32_t idx);
 
-	NetDeviceContainer Install(Ptr<Node> a, Ptr<Node> b,
-			Ptr<VlcDeviceHelper> devHelper, Ptr<VlcChannelHelper> chHelper,
-			std::string txName, std::string rxName, std::string chName);
+		ns3::NetDeviceContainer Install(std::string chName, Ptr<Node> a,
+										Ptr<Node> b);
 
-	virtual ~VlcChannelHelper();
+		NetDeviceContainer Install(Ptr<Node> a, Ptr<Node> b, Ptr<VlcTxNetDevice> tx,
+								   Ptr<VlcRxNetDevice> rx);
 
-private:
+		NetDeviceContainer Install(Ptr<Node> a, Ptr<Node> b,
+								   Ptr<VlcDeviceHelper> devHelper, Ptr<VlcChannelHelper> chHelper,
+								   std::string txName, std::string rxName, std::string chName);
 
-	std::map<std::string, ns3::Ptr<VlcChannel> > m_channel;
+		virtual ~VlcChannelHelper();
 
-	ObjectFactory m_queueFactory;
-	ObjectFactory m_channelFactory;       //!< Channel Factory
-	ObjectFactory m_remoteChannelFactory;
-	Ptr<PointToPointChannel> m_subChannel;
-};
+	private:
+		std::map<std::string, ns3::Ptr<VlcChannel>> m_channel;
+
+		ObjectFactory m_queueFactory;
+		ObjectFactory m_channelFactory; //!< Channel Factory
+		ObjectFactory m_remoteChannelFactory;
+		Ptr<PointToPointChannel> m_subChannel;
+	};
 
 } /* namespace vlc */
 

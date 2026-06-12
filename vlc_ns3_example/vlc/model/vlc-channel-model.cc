@@ -33,6 +33,8 @@ namespace ns3
         m_loss = CreateObject<VlcPropagationLossModel>();
         m_AvgPower = 0;
 
+        m_ambientNoisePower = 0.0;
+
         m_SNR = CreateObject<VlcSnr>();
         m_nDevices = 0;
     }
@@ -58,6 +60,20 @@ namespace ns3
     VlcChannel::GetDevice(std::size_t i) const
     {
         return m_link[i].m_src;
+    }
+
+    void
+    VlcChannel::SetAmbientNoisePower(double ambientNoisePower)
+    {
+        NS_LOG_FUNCTION(this << ambientNoisePower);
+        this->m_ambientNoisePower = ambientNoisePower;
+    }
+
+    double
+    VlcChannel::GetAmbientNoisePower()
+    {
+        NS_LOG_FUNCTION(this);
+        return this->m_ambientNoisePower;
     }
 
     void
@@ -195,7 +211,7 @@ namespace ns3
         NS_LOG_FUNCTION(this);
         ns3::Ptr<VlcRxNetDevice> rx = DynamicCast<VlcRxNetDevice>(this->GetDevice(1));
         auto propLoss = DynamicCast<VlcPropagationLossModel>(this->GetPropagationLossModel());
-        this->m_SNR->CalculateNoiseVar(rx->GetPhotoDetectorArea(), propLoss->GetResp());
+        this->m_SNR->CalculateNoiseVar(rx->GetPhotoDetectorArea(), propLoss->GetResp(), m_ambientNoisePower);
     }
 
     void
@@ -236,7 +252,7 @@ namespace ns3
         }
 
         auto propLoss = DynamicCast<VlcPropagationLossModel>(this->GetPropagationLossModel());
-        this->m_SNR->CalculateNoiseVar(rx->GetPhotoDetectorArea(), propLoss->GetResp());
+        this->m_SNR->CalculateNoiseVar(rx->GetPhotoDetectorArea(), propLoss->GetResp(), m_ambientNoisePower);
         m_SNR->CalculateSNR();
         return this->m_SNR->GetSNR();
     }
