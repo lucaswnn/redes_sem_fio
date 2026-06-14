@@ -119,12 +119,19 @@ namespace ns3
 		thermal_var = (8 * M_PI * k * temp * Cpd * A * I2 * (std::pow(B, 2)) / Gol) + (16 * (std::pow(M_PI, 2)) * k * temp * gamma * (std::pow(Cpd, 2)) * (std::pow(A, 2)) * I3 * (std::pow(B, 3)) / gm);
 
 		noise_var = shot_var + thermal_var + ambientNoisePower;
+
+		std::cout
+			<< "shot=" << shot_var
+			<< "\tther=" << thermal_var
+			<< "\tambi=" << ambientNoisePower
+			<< "\n";
 	}
 
 	// caluclates the SNR value using received power, responsivity and noise variance
 	void VlcSnr::CalculateSNR()
 	{
 		NS_LOG_FUNCTION(this);
+		std::cout << "Pr=" << Pr << "\n";
 		if (noise_var != 0)
 			SNR = std::pow((Pr), 2) / noise_var;
 	}

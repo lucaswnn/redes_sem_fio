@@ -4,8 +4,12 @@
 #include "ns3/mobility-module.h"
 #include "ns3/applications-module.h"
 #include "ns3/flow-monitor-module.h"
+#include "ns3/ping-helper.h"
 
+#include "ns3/vlc-device-helper.h"
+#include "ns3/vlc-channel-helper.h"
 #include "ns3/vlc-mobility-model.h"
+#include "ns3/vlc-error-model.h"
 
 #include <cmath>
 #include <fstream>
@@ -21,20 +25,18 @@ NS_LOG_COMPONENT_DEFINE("VlcHandoverExperiment");
 
 static constexpr double phi_1_2 = 60.0 * M_PI / 180.0; // rad
 static constexpr double A = 1e-4;                      // m²
-static constexpr double fov = 70.0 * M_PI / 180.0;     // rad
+static constexpr double fov = 170.0 * M_PI / 180.0;    // rad
 static constexpr double R = 1.0;                       // A/W
 static constexpr double Ibg = 5.1e-3;                  // A
 static constexpr double I2 = 0.562;
 static constexpr double gm = 0.03; // S
-static constexpr double gammaFET = 1.5;
+static constexpr double gamma = 1.5;
 static constexpr double eta = 1.12e-6; // F/m²
 static constexpr double G = 10.0;
 static constexpr double I3 = 0.0868;
 static constexpr double Mi = 0.2;
 static constexpr double ftmax = 1.0;
 static constexpr double ftmin = -1.0;
-static constexpr double Ef2t = 0.5 * (ftmax * ftmax + ftmin * ftmin);
-static constexpr double EMif2t = 0.5 * Mi * Mi * (ftmax * ftmax + ftmin * ftmin);
 static constexpr double Pt = 5.0;                    // W
 static constexpr double q = 1.6022e-19;              // C
 static constexpr double Tk = 297.0;                  // K
@@ -42,23 +44,12 @@ static constexpr double k = 1.38065e-23;             // m² * kg / (s² * K)
 static constexpr double azimuth = 0.0;               // rad
 static constexpr double txEl = -90.0 * M_PI / 180.0; // rad
 static constexpr double rxEl = 90.0 * M_PI / 180.0;  // rad
-static const double m = std::log(1.0 / 2.0) / std::log(std::cos(phi_1_2));
 
 struct SnrRecord
 {
     double time;
     std::vector<double> snrs;
 };
-
-double LinearToDB(double snrWatt)
-{
-    return 10.0 * std::log10(snrWatt);
-}
-
-double DBToLinear(double snrDb)
-{
-    return std::pow(10.0, snrDb / 10.0);
-}
 
 using MobilityFunc = std::function<ns3::Vector(double time, ns3::Vector currentPos)>;
 using HandoverFunc = std::function<int32_t(double time,
@@ -77,8 +68,6 @@ struct Scenario
     double ttt;
     double ambientNoiseDb;
     double shadowStdDb;
-    double lampPowerW;
-    double bps;
 
     std::vector<ns3::Vector> apPositions;
     ns3::Vector ueFirstPosition;
@@ -94,20 +83,17 @@ public:
     void RunSimulation();
 
 private:
+    void ConfigureRx(std::string rx);
+    void ConfigureTx(std::string tx, uint32_t i);
+    void ConfigureCh(std::string ch,
+                     std::string tx,
+                     std::string rx,
+                     uint32_t node);
+
     void CreateNodes();
     void CreateMobility();
 
-    double CalculateDistance(const ns3::Vector v1, const ns3::Vector &v2);
-    double CalculateCosIrr(const ns3::Vector &tx, const ns3::Vector &rx);
-    double CalculateCosInc(const ns3::Vector &tx, const ns3::Vector &rx);
-    double CalculateRadiationPattern(double cosIrr);
-    double CalculateH0(double d, double cosInc, double radPat);
-    double CalculatePr(double H0);
-    double CalculateAvgRxPower(double Pr);
-    double CalculateSigmaShot(double Pr);
-    double CalculateSigmaTherm();
-    double CalculateSNR(double avgRxPower, double sigmaShot, double sigmaTherm);
-    double GetSNR(const ns3::Vector &tx, const ns3::Vector &rx);
+    void CalculateLambertianOrder();
 
     void PrintApInfo();
     void SetSchedule();
@@ -116,6 +102,8 @@ private:
     void CollectMetrics();
     void EvaluateHandover();
 
+    double m_m;
+
     Scenario m_sc;
     uint32_t m_nAps;
     ns3::NodeContainer m_aps;
@@ -123,9 +111,26 @@ private:
     std::vector<ns3::Vector> m_apsPos;
     ns3::NodeContainer m_allNodes;
 
+    ns3::VlcDeviceHelper m_devHelper;
+    ns3::VlcChannelHelper m_chHelper;
+
+    ns3::NetDeviceContainer m_devs;
+    ns3::Ipv4InterfaceContainer m_ipInterfs;
+    std::vector<ns3::Ipv4Address> m_apIps;
+
     int32_t m_currentApIndex;
     std::vector<SnrRecord> m_snrHistory;
 };
+
+double LinearToDB(double snrWatt)
+{
+    return 10.0 * std::log(snrWatt);
+}
+
+double DBToLinear(double snrDb)
+{
+    return std::pow(10.0, snrDb / 10.0);
+}
 
 VlcHandoverScenario::VlcHandoverScenario(const Scenario &sc) : m_sc(sc),
                                                                m_nAps(sc.apPositions.size()),
@@ -137,92 +142,87 @@ VlcHandoverScenario::VlcHandoverScenario(const Scenario &sc) : m_sc(sc),
 
     CreateNodes();
     CreateMobility();
+    CreateVlcDevices();
+    CreateChannels();
+    InstallInternet();
     SetSchedule();
 
     std::cout << "Preparo inicial da simulação concluído.\n";
 }
 
-double VlcHandoverScenario::CalculateDistance(const ns3::Vector v1, const ns3::Vector &v2)
+void VlcHandoverScenario::ConfigureRx(std::string rx)
 {
-    return std::sqrt(std::pow(v2.x - v1.x, 2) + std::pow(v2.y - v1.y, 2) + std::pow(v2.z - v1.z, 2));
+    m_devHelper.CreateReceiver(rx);
+    m_devHelper.SetReceiverParameter(rx, "FilterGain", 1);
+    m_devHelper.SetReceiverParameter(rx, "RefractiveIndex", 1.5);
+    m_devHelper.SetReceiverParameter(rx, "FOVAngle", 28.5);
+    m_devHelper.SetReceiverParameter(rx, "ConcentrationGain", 0);
+    m_devHelper.SetReceiverParameter(rx, "PhotoDetectorArea", 1.3e-5);
+    m_devHelper.SetReceiverParameter(rx, "RXGain", 0);
+    m_devHelper.SetReceiverParameter(rx, "Beta", 1);
+    m_devHelper.SetReceiverParameter(rx, "SetModulationScheme", ns3::VlcErrorModel::OOK);
+
+    auto rxMob = m_ue.Get(0)->GetObject<ns3::VlcMobilityModel>();
+    auto uePos = rxMob->GetPosition();
+    m_devHelper.SetReceiverPosition(rx,
+                                    uePos.x,
+                                    uePos.y,
+                                    uePos.z);
+
+    auto rxDevice = m_devHelper.GetReceiver(rx);
+    rxDevice->SetMobilityModel(rxMob);
 }
 
-double VlcHandoverScenario::CalculateCosIrr(const ns3::Vector &tx, const ns3::Vector &rx)
+void VlcHandoverScenario::ConfigureTx(std::string tx, uint32_t node)
 {
-    auto txNorm = ns3::Vector(std::cos(txEl) * std::cos(azimuth),
-                              std::cos(txEl) * std::sin(azimuth),
-                              std::sin(txEl));
+    m_devHelper.CreateTransmitter(tx);
+    m_devHelper.SetTXSignal(tx, 1000, 0.5, 0, 9.25e-1, 0);
+    m_devHelper.SetTrasmitterParameter(tx, "Bias", 0);
+    m_devHelper.SetTrasmitterParameter(tx, "SemiAngle", 35);
+    m_devHelper.SetTrasmitterParameter(tx, "Azimuth", 0);
+    m_devHelper.SetTrasmitterParameter(tx, "Elevation", 270.0);
+    m_devHelper.SetTrasmitterParameter(tx, "Gain", 70);
+    m_devHelper.SetTrasmitterParameter(tx, "DataRateInMBPS", 0.3);
 
-    auto txRx = ns3::Vector(rx.x - tx.x, rx.y - tx.y, rx.z - tx.z);
-    auto d = CalculateDistance(tx, rx);
-    auto txRxNorm = ns3::Vector(txRx.x / d, txRx.y / d, txRx.z / d);
-    return txRxNorm.x * txNorm.x + txRxNorm.y * txNorm.y + txRxNorm.z * txNorm.z;
+    auto txMob = m_aps.Get(node)->GetObject<ns3::VlcMobilityModel>();
+    auto txPos = txMob->GetPosition();
+    m_devHelper.SetTrasmitterPosition(tx,
+                                      txPos.x,
+                                      txPos.y,
+                                      txPos.z);
 }
 
-double VlcHandoverScenario::CalculateCosInc(const ns3::Vector &tx, const ns3::Vector &rx)
+void VlcHandoverScenario::ConfigureCh(std::string ch,
+                                      std::string tx,
+                                      std::string rx,
+                                      uint32_t node)
 {
-    auto rxNorm = ns3::Vector(std::cos(rxEl) * std::cos(azimuth),
-                              std::cos(rxEl) * std::sin(azimuth),
-                              std::sin(rxEl));
+    std::cout << "Criando canal " << tx << "<->" << rx << "...\n";
 
-    auto txRx = ns3::Vector(rx.x - tx.x, rx.y - tx.y, rx.z - tx.z);
-    auto d = CalculateDistance(tx, rx);
-    auto txRxNorm = ns3::Vector(txRx.x / d, txRx.y / d, txRx.z / d);
-    return -(txRxNorm.x * rxNorm.x + txRxNorm.y * rxNorm.y + txRxNorm.z * rxNorm.z);
-}
+    m_chHelper.CreateChannel(ch);
+    m_chHelper.SetPropagationLoss(ch, "VlcPropagationLoss");
+    m_chHelper.SetPropagationDelay(ch, 2);
+    m_chHelper.SetChannelParameter(ch, "TEMP", 295);
+    m_chHelper.SetChannelParameter(ch, "BAND_FACTOR_NOISE_SIGNAL", 10.0);
+    m_chHelper.SetChannelWavelength(ch, 380, 780);
+    m_chHelper.SetChannelParameter(ch, "ElectricNoiseBandWidth", 3 * 1e5);
+    m_chHelper.AttachTransmitter(ch, tx, &m_devHelper);
+    m_chHelper.AttachReceiver(ch, rx, &m_devHelper);
 
-double VlcHandoverScenario::CalculateRadiationPattern(double cosIrr)
-{
-    return (m + 1) * std::pow(cosIrr, m) / (2 * M_PI);
-}
+    double ambientNoisePower = std::pow(10, (m_sc.ambientNoiseDb - 30) / 10);
+    m_chHelper.SetChannelAmbientNoisePower(ch, ambientNoisePower);
 
-double VlcHandoverScenario::CalculateH0(double d, double cosInc, double radPat)
-{
-    if (cosInc <= std::cos(fov))
-    {
-        return 0.0;
-    }
+    ns3::NetDeviceContainer devs = m_chHelper.Install(m_aps.Get(node),
+                                                      m_ue.Get(0),
+                                                      &m_devHelper,
+                                                      &m_chHelper,
+                                                      tx,
+                                                      rx,
+                                                      ch);
 
-    return radPat * A * cosInc / (d * d);
-}
+    m_devs.Add(devs);
 
-double VlcHandoverScenario::CalculatePr(double H0)
-{
-    return H0 * m_sc.lampPowerW;
-}
-
-double VlcHandoverScenario::CalculateAvgRxPower(double Pr)
-{
-    return std::pow(R * Pr * Mi, 2) * Ef2t;
-}
-
-double VlcHandoverScenario::CalculateSigmaShot(double Pr)
-{
-    return 2 * q * (R * Pr * (1 + EMif2t) + Ibg * I2) * m_sc.bps;
-}
-
-double VlcHandoverScenario::CalculateSigmaTherm()
-{
-    return 8 * M_PI * Tk * k * eta * A * m_sc.bps * m_sc.bps * (I2 / G + 2 * M_PI * gammaFET * eta * A * I3 * m_sc.bps / gm);
-}
-
-double VlcHandoverScenario::CalculateSNR(double avgRxPower, double sigmaShot, double sigmaTherm)
-{
-    return avgRxPower / (sigmaShot + sigmaTherm);
-}
-
-double VlcHandoverScenario::GetSNR(const ns3::Vector &tx, const ns3::Vector &rx)
-{
-    double cosInc = CalculateCosInc(tx, rx);
-    double cosIrr = CalculateCosIrr(tx, rx);
-    double d = CalculateDistance(tx, rx);
-    double radPat = CalculateRadiationPattern(cosIrr);
-    double H0 = CalculateH0(d, cosInc, radPat);
-    double Pr = CalculatePr(H0);
-    double sigmaShot = CalculateSigmaShot(Pr);
-    double sigmaTherm = CalculateSigmaTherm();
-    double avgRxPower = CalculateAvgRxPower(Pr);
-    return CalculateSNR(avgRxPower, sigmaShot, sigmaTherm);
+    std::cout << "Canal " << tx << " <-> " << rx << " criado.\n";
 }
 
 void VlcHandoverScenario::CreateNodes()
@@ -265,6 +265,66 @@ void VlcHandoverScenario::CreateMobility()
     std::cout << "Configuração de mobilidade feita com sucesso.\n";
 }
 
+void VlcHandoverScenario::CreateVlcDevices()
+{
+    std::cout << "Iniciando a criação dos dispositivos VLC...\n";
+
+    for (uint32_t i = 0; i < m_nAps; i++)
+    {
+        std::string tx = "TX_" + std::to_string(i);
+        ConfigureTx(tx, i);
+    }
+
+    for (uint32_t i = 0; i < m_nAps; i++)
+    {
+        std::string rx = "RX_" + std::to_string(i);
+        ConfigureRx(rx);
+    }
+
+    std::cout << "Criação dos dispositivos VLC feita com sucesso.\n";
+}
+
+void VlcHandoverScenario::CreateChannels()
+{
+    std::cout << "Iniciando a criação dos canais ópticos...\n";
+
+    for (uint32_t i = 0; i < m_nAps; i++)
+    {
+        std::string ch = "CH_" + std::to_string(i);
+        std::string tx = "TX_" + std::to_string(i);
+        std::string rx = "RX_" + std::to_string(i);
+
+        ConfigureCh(ch, tx, rx, i);
+    }
+
+    std::cout << "Criação dos canais ópticos feita com sucesso.\n";
+}
+
+void VlcHandoverScenario::InstallInternet()
+{
+    ns3::InternetStackHelper internet;
+    internet.Install(m_allNodes);
+
+    ns3::Ipv4AddressHelper ipv4;
+    ipv4.SetBase("10.1.1.0", "255.255.255.0");
+    m_ipInterfs = ipv4.Assign(m_devs);
+
+    std::cout << "Configuração:" << std::endl;
+    std::cout << "# devices: " << m_devs.GetN() << "\n";
+    std::cout << "# interfaces: " << m_ipInterfs.GetN() << "\n";
+
+    auto ueId = m_ue.Get(0)->GetId();
+    for (uint32_t i = 0; i < m_devs.GetN(); i++)
+    {
+        auto dev = m_devs.Get(i);
+        auto id = dev->GetNode()->GetId();
+        if (id != ueId)
+        {
+            m_apIps.push_back(m_ipInterfs.GetAddress(i));
+        }
+    }
+}
+
 void VlcHandoverScenario::PrintApInfo()
 {
     for (uint32_t i = 0; i < m_nAps; i++)
@@ -272,7 +332,9 @@ void VlcHandoverScenario::PrintApInfo()
         auto ap = m_aps.Get(i);
         auto mob = ap->GetObject<ns3::MobilityModel>();
         auto pos = mob->GetPosition();
-        std::cout << i << " -> (" << pos.x << ", " << pos.y << ", " << pos.z << ")\n";
+        std::cout
+            << "IP: " << m_apIps[i]
+            << " (" << pos.x << ", " << pos.y << ", " << pos.z << ")\n";
     }
 }
 
@@ -311,6 +373,13 @@ void VlcHandoverScenario::UpdateUeMobility()
 
     ueMob->SetPosition(newPos);
 
+    for (uint32_t i = 0; i < m_nAps; i++)
+    {
+        std::string rx = "RX_" + std::to_string(i);
+        auto ueRxMob = m_devHelper.GetReceiver(rx);
+        ueRxMob->SetPosition(newPos);
+    }
+
     ns3::Simulator::Schedule(ns3::Seconds(m_sc.scheduleIntervalSeconds),
                              &VlcHandoverScenario::UpdateUeMobility,
                              this);
@@ -320,13 +389,13 @@ void VlcHandoverScenario::CollectMetrics()
 {
     double t = ns3::Simulator::Now().GetSeconds();
     auto ueMob = m_ue.Get(0)->GetObject<ns3::VlcMobilityModel>();
-    auto uePos = ueMob->GetPosition();
+    auto pos = ueMob->GetPosition();
 
     std::cout << "\n"
               << "t=" << t
-              << " x=" << uePos.x
-              << " y=" << uePos.y
-              << " z=" << uePos.z
+              << " x=" << pos.x
+              << " y=" << pos.y
+              << " z=" << pos.z
               << "\n";
 
     SnrRecord currentRecord;
@@ -334,12 +403,12 @@ void VlcHandoverScenario::CollectMetrics()
 
     for (uint32_t i = 0; i < m_nAps; i++)
     {
-        auto apPos = m_aps.Get(i)->GetObject<ns3::VlcMobilityModel>()->GetPosition();
         std::string ch = "CH_" + std::to_string(i);
         std::string tx = "TX_" + std::to_string(i);
-        double snrVal = GetSNR(apPos, uePos);
+        double snrVal = m_chHelper.GetChannel(ch)->GetSNR();
         currentRecord.snrs.push_back(snrVal);
         std::cout << "[" << i << "] > SNR=" << LinearToDB(snrVal) << " dB"
+                  << "\tP=" << m_devHelper.GetTransmitter(tx)->GetAveragePowerSignalPower()
                   << "\n";
     }
 
@@ -383,8 +452,6 @@ int main(int argc, char **argv)
     double ttt = 0.1;
     double ambientNoiseDb = -300.0;
     double shadowStdDb = 0.5;
-    double lampPowerW = 5.0;
-    double bps = 100e6;
 
     std::vector apPositions = {ns3::Vector(0.0, 0.0, 2.8),
                                ns3::Vector(10.0, 0.0, 2.8),
@@ -393,7 +460,7 @@ int main(int argc, char **argv)
                                ns3::Vector(10.0, 10.0, 2.8),
                                ns3::Vector(20.0, 10.0, 2.8)};
 
-    ns3::Vector ueFirstPosition = ns3::Vector(0.0, 0.0, 0.65);
+    ns3::Vector ueFirstPosition = ns3::Vector(0.0, 0.0, 1.2);
 
     MobilityFunc ueMobilityFunc = [vel](double t, ns3::Vector curPos)
     { return ns3::Vector(vel * t, curPos.y, curPos.z); };
@@ -413,8 +480,6 @@ int main(int argc, char **argv)
                    ttt,
                    ambientNoiseDb,
                    shadowStdDb,
-                   lampPowerW,
-                   bps,
                    apPositions,
                    ueFirstPosition,
                    ueMobilityFunc,

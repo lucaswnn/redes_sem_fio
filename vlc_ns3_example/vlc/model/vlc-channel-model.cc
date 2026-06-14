@@ -227,6 +227,10 @@ namespace ns3
         NS_LOG_FUNCTION(this);
         ns3::Ptr<VlcTxNetDevice> tx = DynamicCast<VlcTxNetDevice>(this->GetDevice(0));
         ns3::Ptr<VlcRxNetDevice> rx = DynamicCast<VlcRxNetDevice>(this->GetDevice(1));
+
+        double power = tx->GetAveragePowerSignalPower();
+        m_SNR->SetReceivedPower(power);
+
         double cosFOV = std::cos(rx->GetFOVAngle());
 
         auto txMob = tx->GetMobilityModel();
