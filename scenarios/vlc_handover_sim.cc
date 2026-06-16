@@ -77,29 +77,29 @@ NS_LOG_COMPONENT_DEFINE("VlcHandoverSimulation");
 /* =========================================================================
  * Physical constants  [ref.1, Table 1]
  * =========================================================================*/
-static const double PHOTO_AREA       = 5.24e-6;
-static const double RESPONSIVITY     = 0.45;
-static const double TX_POWER         = 500e-3;
-static const double IBG_STANDARD     = 5100e-6;
-static const double I2_FACTOR        = 0.562;
-static const double TEMP_K           = 297.0;
-static const double ETA_CAP          = 112e-6 * 1e-4;
-static const double OPEN_LOOP_GAIN   = 10.0;
-static const double I3_FACTOR        = 0.0868;
+static const double PHOTO_AREA = 5.24e-6;
+static const double RESPONSIVITY = 0.45;
+static const double TX_POWER = 500e-3;
+static const double IBG_STANDARD = 5100e-6;
+static const double I2_FACTOR = 0.562;
+static const double TEMP_K = 297.0;
+static const double ETA_CAP = 112e-6 * 1e-4;
+static const double OPEN_LOOP_GAIN = 10.0;
+static const double I3_FACTOR = 0.0868;
 static const double FET_TRANSCONDUCT = 30e-3;
-static const double ELECTRON_CHARGE  = 1.602176634e-19;
-static const double BOLTZMANN_K      = 1.380649e-23;
-static const double NOISE_BW         = 3e5;
-static const double OOK_MOD_INDEX    = 0.5;
+static const double ELECTRON_CHARGE = 1.602176634e-19;
+static const double BOLTZMANN_K = 1.380649e-23;
+static const double NOISE_BW = 3e5;
+static const double OOK_MOD_INDEX = 0.5;
 
 /* =========================================================================
  * Room geometry
  * =========================================================================*/
-static const double ROOM_X      = 10.0;
-static const double ROOM_Y      = 16.0;
-static const double AP_HEIGHT   = 3.0;
+static const double ROOM_X = 10.0;
+static const double ROOM_Y = 16.0;
+static const double AP_HEIGHT = 3.0;
 static const double NODE_HEIGHT = 1.2;
-static const double H_SEP       = AP_HEIGHT - NODE_HEIGHT; // 1.8 m
+static const double H_SEP = AP_HEIGHT - NODE_HEIGHT; // 1.8 m
 
 /* =========================================================================
  * TX angular parameter  [ref.1, Table 1]
@@ -109,26 +109,26 @@ static const double SEMI_ANGLE_DEG = 35.0;
 /* =========================================================================
  * Stage 1 parameters
  * =========================================================================*/
-static const int    SCAN_RES     = 400;   // grid points per axis (400x400 = 160000)
-static const double COVERAGE_MIN = 5.0;   // minimum coverage [%] — relaxed to allow all positive-SNR cases
-static const double SNR_MIN_DB   = 0.0;   // minimum SNR floor [dB] — only positive SNR = viable channel
-static const int    N_SELECT     = 3;     // cases to select for Stage 2
+static const int SCAN_RES = 400;        // grid points per axis (400x400 = 160000)
+static const double COVERAGE_MIN = 5.0; // minimum coverage [%] — relaxed to allow all positive-SNR cases
+static const double SNR_MIN_DB = 0.0;   // minimum SNR floor [dB] — only positive SNR = viable channel
+static const int N_SELECT = 3;          // cases to select for Stage 2
 
 /* =========================================================================
  * Stage 2 parameters
  * =========================================================================*/
-static const double HYSTERESIS_DB   = 3.0;
+static const double HYSTERESIS_DB = 3.0;
 static const double SAMPLE_INTERVAL = 0.1;
 static const double SIM_DURATION_RW = 120.0;
-static const double PHY_RATE_MBPS   = 0.3;
-static const int    PKT_SIZE_BYTES  = 100;
+static const double PHY_RATE_MBPS = 0.3;
+static const int PKT_SIZE_BYTES = 100;
 static const double PINGPONG_WINDOW = 0.5;
 
 /* =========================================================================
  * Stage 1 parameter space
  * =========================================================================*/
-static const std::vector<double> FOV_LIST  = { 28.5, 45.0, 60.0, 75.0 };
-static const std::vector<int>    NAPS_LIST = { 4, 9, 16, 25 };
+static const std::vector<double> FOV_LIST = {28.5, 45.0, 60.0, 75.0};
+static const std::vector<int> NAPS_LIST = {4, 9, 16, 25};
 
 /* =========================================================================
  * Channel model functions
@@ -142,68 +142,80 @@ static double LambertianOrder()
 static double RadiationPattern(double phi_rad)
 {
     double m = LambertianOrder();
-    if (phi_rad < 0.0) phi_rad = 0.0;
+    if (phi_rad < 0.0)
+        phi_rad = 0.0;
     return ((m + 1.0) / (2.0 * M_PI)) * std::pow(std::cos(phi_rad), m);
 }
 
-static double ChannelGainH0(const Vector& ap, const Vector& rx, double fovDeg)
+static double ChannelGainH0(const Vector &ap, const Vector &rx, double fovDeg)
 {
     double dx = rx.x - ap.x, dy = rx.y - ap.y, dz = rx.z - ap.z;
-    double d  = std::sqrt(dx*dx + dy*dy + dz*dz);
-    if (d < 1e-9) return 0.0;
+    double d = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (d < 1e-9)
+        return 0.0;
     double cosT = std::fabs(dz) / d;
     double cosP = -dz / d;
-    if (cosP < 0.0) return 0.0;
-    double phi   = std::acos(std::min(cosP, 1.0));
+    if (cosP < 0.0)
+        return 0.0;
+    double phi = std::acos(std::min(cosP, 1.0));
     double theta = std::acos(std::min(cosT, 1.0));
-    if (theta > fovDeg * M_PI / 180.0) return 0.0;
+    if (theta > fovDeg * M_PI / 180.0)
+        return 0.0;
     return RadiationPattern(phi) * (PHOTO_AREA / (d * d)) * cosT;
 }
 
 static double ShotNoise(double Pr, double ibg)
 {
-    return 2.0 * ELECTRON_CHARGE
-           * (RESPONSIVITY * Pr * (1.0 + OOK_MOD_INDEX * OOK_MOD_INDEX)
-              + ibg * I2_FACTOR)
-           * NOISE_BW;
+    return 2.0 * ELECTRON_CHARGE * (RESPONSIVITY * Pr * (1.0 + OOK_MOD_INDEX * OOK_MOD_INDEX) + ibg * I2_FACTOR) * NOISE_BW;
 }
 
 static double ThermalNoise()
 {
     double t1 = I2_FACTOR / OPEN_LOOP_GAIN;
-    double t2  = (2.0 * M_PI * ETA_CAP * PHOTO_AREA * I3_FACTOR * NOISE_BW)
-                 / FET_TRANSCONDUCT;
-    return 8.0 * M_PI * BOLTZMANN_K * TEMP_K
-           * ETA_CAP * PHOTO_AREA * NOISE_BW * NOISE_BW * (t1 + t2);
+    double t2 = (2.0 * M_PI * ETA_CAP * PHOTO_AREA * I3_FACTOR * NOISE_BW) / FET_TRANSCONDUCT;
+    return 8.0 * M_PI * BOLTZMANN_K * TEMP_K * ETA_CAP * PHOTO_AREA * NOISE_BW * NOISE_BW * (t1 + t2);
 }
 
 static double ComputeSNR(double H0, double ibg)
 {
-    if (H0 <= 0.0) return 0.0;
-    double Pr    = H0 * TX_POWER;
-    double sig   = RESPONSIVITY * RESPONSIVITY * Pr * Pr;
+    if (H0 <= 0.0)
+        return 0.0;
+    double Pr = H0 * TX_POWER;
+    double sig = RESPONSIVITY * RESPONSIVITY * Pr * Pr;
     double noise = ShotNoise(Pr, ibg) + ThermalNoise();
     return (noise > 0.0) ? sig / noise : 0.0;
 }
 
 static double ComputeBER(double snr)
-    { return (snr <= 0.0) ? 0.5 : 0.5 * std::erfc(std::sqrt(snr / 2.0)); }
+{
+    return (snr <= 0.0) ? 0.5 : 0.5 * std::erfc(std::sqrt(snr / 2.0));
+}
 static double ComputePER(double ber)
-    { return 1.0 - std::pow(1.0 - ber, (double)(8 * PKT_SIZE_BYTES)); }
+{
+    return 1.0 - std::pow(1.0 - ber, (double)(8 * PKT_SIZE_BYTES));
+}
 static double ComputeGoodput(double per)
-    { return PHY_RATE_MBPS * (1.0 - per); }
+{
+    return PHY_RATE_MBPS * (1.0 - per);
+}
 static double LinearToDb(double v)
-    { return (v <= 0.0)
-        ? -std::numeric_limits<double>::infinity()
-        : 10.0 * std::log10(v); }
+{
+    return (v <= 0.0)
+               ? -std::numeric_limits<double>::infinity()
+               : 10.0 * std::log10(v);
+}
 
 /* =========================================================================
  * C1 coverage geometry
  * =========================================================================*/
 static double ComputeRfov(double fovDeg)
-    { return H_SEP * std::tan(fovDeg * M_PI / 180.0); }
+{
+    return H_SEP * std::tan(fovDeg * M_PI / 180.0);
+}
 static double ComputeDmax(double fovDeg)
-    { return ComputeRfov(fovDeg) * std::sqrt(2.0); }
+{
+    return ComputeRfov(fovDeg) * std::sqrt(2.0);
+}
 
 /* =========================================================================
  * BuildGrid — generic AP placement for any nAPs
@@ -216,9 +228,15 @@ static std::vector<Vector> BuildGrid(int nAPs)
     for (int nx = 1; nx <= nAPs; nx++)
     {
         int ny = (int)std::ceil((double)nAPs / nx);
-        if (nx * ny < nAPs) continue;
+        if (nx * ny < nAPs)
+            continue;
         double r = std::fabs((double)nx / ny - ROOM_X / ROOM_Y);
-        if (r < br) { br = r; bx = nx; by = ny; }
+        if (r < br)
+        {
+            br = r;
+            bx = nx;
+            by = ny;
+        }
     }
     double dx = ROOM_X / (bx > 1 ? bx - 1 : 1);
     double dy = ROOM_Y / (by > 1 ? by - 1 : 1);
@@ -238,9 +256,9 @@ static std::vector<Vector> BuildReferenceGrid()
 {
     const double c0 = ROOM_X / 4.0, c1 = 3.0 * ROOM_X / 4.0;
     const double r0 = ROOM_Y / 6.0, r1 = ROOM_Y / 2.0, r2 = 5.0 * ROOM_Y / 6.0;
-    return { Vector(c0,r0,AP_HEIGHT), Vector(c1,r0,AP_HEIGHT),
-             Vector(c0,r1,AP_HEIGHT), Vector(c1,r1,AP_HEIGHT),
-             Vector(c0,r2,AP_HEIGHT), Vector(c1,r2,AP_HEIGHT) };
+    return {Vector(c0, r0, AP_HEIGHT), Vector(c1, r0, AP_HEIGHT),
+            Vector(c0, r1, AP_HEIGHT), Vector(c1, r1, AP_HEIGHT),
+            Vector(c0, r2, AP_HEIGHT), Vector(c1, r2, AP_HEIGHT)};
 }
 
 /* =========================================================================
@@ -249,13 +267,13 @@ static std::vector<Vector> BuildReferenceGrid()
 struct Stage1Result
 {
     double fovDeg;
-    int    nAPs;
+    int nAPs;
     double coverage;
     double avgSnr;
     double minSnr;
     double overlapPct;
-    bool   c1Satisfied;
-    bool   selected;
+    bool c1Satisfied;
+    bool selected;
 };
 
 /* =========================================================================
@@ -268,18 +286,18 @@ struct Stage1Result
 static Stage1Result RunStage1(double fovDeg, int nAPs)
 {
     std::vector<Vector> apPos = BuildGrid(nAPs);
-    int    nAP      = (int)apPos.size();
-    double dmax     = ComputeDmax(fovDeg);
+    int nAP = (int)apPos.size();
+    double dmax = ComputeDmax(fovDeg);
 
     // Compute actual max spacing in the grid
-    double dx_grid  = ROOM_X / (std::ceil(std::sqrt((double)nAPs)) - 1 + 1e-9);
-    bool   c1ok     = (dx_grid <= dmax);
+    double dx_grid = ROOM_X / (std::ceil(std::sqrt((double)nAPs)) - 1 + 1e-9);
+    bool c1ok = (dx_grid <= dmax);
 
-    double sumSnr   = 0.0;
-    double minSnr   = 1e30;
-    int    covered  = 0;
-    int    overlap  = 0;
-    int    total    = SCAN_RES * SCAN_RES;
+    double sumSnr = 0.0;
+    double minSnr = 1e30;
+    int covered = 0;
+    int overlap = 0;
+    int total = SCAN_RES * SCAN_RES;
 
     for (int ix = 0; ix < SCAN_RES; ++ix)
     {
@@ -290,36 +308,40 @@ static Stage1Result RunStage1(double fovDeg, int nAPs)
             Vector rx(x, y, NODE_HEIGHT);
 
             double bestSNR = 0.0;
-            int    inRange = 0;
+            int inRange = 0;
 
             for (int i = 0; i < nAP; ++i)
             {
-                double H0  = ChannelGainH0(apPos[i], rx, fovDeg);
+                double H0 = ChannelGainH0(apPos[i], rx, fovDeg);
                 double snr = ComputeSNR(H0, IBG_STANDARD);
-                if (snr > 0.0) ++inRange;
-                if (snr > bestSNR) bestSNR = snr;
+                if (snr > 0.0)
+                    ++inRange;
+                if (snr > bestSNR)
+                    bestSNR = snr;
             }
 
             if (bestSNR > 0.0)
             {
                 double snrDb = LinearToDb(bestSNR);
                 sumSnr += snrDb;
-                if (snrDb < minSnr) minSnr = snrDb;
+                if (snrDb < minSnr)
+                    minSnr = snrDb;
                 ++covered;
             }
-            if (inRange >= 2) ++overlap;
+            if (inRange >= 2)
+                ++overlap;
         }
     }
 
     Stage1Result r;
-    r.fovDeg      = fovDeg;
-    r.nAPs        = nAPs;
-    r.coverage    = 100.0 * covered / total;
-    r.avgSnr      = (covered > 0) ? sumSnr / covered : 0.0;
-    r.minSnr      = (covered > 0) ? minSnr : 0.0;
-    r.overlapPct  = 100.0 * overlap / total;
+    r.fovDeg = fovDeg;
+    r.nAPs = nAPs;
+    r.coverage = 100.0 * covered / total;
+    r.avgSnr = (covered > 0) ? sumSnr / covered : 0.0;
+    r.minSnr = (covered > 0) ? minSnr : 0.0;
+    r.overlapPct = 100.0 * overlap / total;
     r.c1Satisfied = c1ok;
-    r.selected    = false;
+    r.selected = false;
     return r;
 }
 
@@ -333,30 +355,35 @@ struct ScenarioConfig
     double ibg;
     double hysteresisDb;
     double fovDeg;
-    int    nAPs;        // 0 = reference [2]
-    bool   useRandomWalk;
+    int nAPs; // 0 = reference [2]
+    bool useRandomWalk;
 };
 
 struct SimState
 {
     std::vector<Vector> apPositions;
-    double              fovDeg;
-    int                 currentAP;
+    double fovDeg;
+    int currentAP;
 
-    struct HandoverEvent {
-        double time; int from, to;
-        double snrDb, ber, goodputMbps;
+    struct HandoverEvent
+    {
+        double time;
+        int from, to;
+        double snrDb, ber, per, goodputMbps;
+        double hoTimeEst;
     };
     std::vector<HandoverEvent> handoverLog;
 
-    struct SnrSample {
+    struct SnrSample
+    {
         double time;
-        std::vector<double> snrDb, ber, goodputMbps;
+        double x, y;
+        std::vector<double> snrDb, ber, per, goodputMbps;
         int servingAP;
     };
     std::vector<SnrSample> snrSeries;
 
-    const ScenarioConfig* cfg;
+    const ScenarioConfig *cfg;
     Ptr<Node> mobileNode;
 };
 
@@ -365,29 +392,38 @@ struct SimState
  * Works with ANY NS-3 MobilityModel via GetPosition() generic interface.
  * WaypointMobilityModel and RandomWalk2dMobilityModel are both native NS-3.
  * =========================================================================*/
-static void SampleAndDecide(SimState* state)
+static void SampleAndDecide(SimState *state)
 {
     Ptr<MobilityModel> mob = state->mobileNode->GetObject<MobilityModel>();
     Vector pos = mob->GetPosition();
     double now = Simulator::Now().GetSeconds();
-    int    nAP = (int)state->apPositions.size();
+    int nAP = (int)state->apPositions.size();
 
     SimState::SnrSample smp;
     smp.time = now;
+    smp.x = pos.x;
+    smp.y = pos.y;
     smp.snrDb.resize(nAP, 0.0);
     smp.ber.resize(nAP, 0.5);
+    smp.per.resize(nAP, 1.0);
     smp.goodputMbps.resize(nAP, 0.0);
 
-    double bSNR = 0.0; int bAP = -1;
+    double bSNR = 0.0;
+    int bAP = -1;
     for (int i = 0; i < nAP; ++i)
     {
-        double H0  = ChannelGainH0(state->apPositions[i], pos, state->fovDeg);
+        double H0 = ChannelGainH0(state->apPositions[i], pos, state->fovDeg);
         double snr = ComputeSNR(H0, state->cfg->ibg);
         double ber = ComputeBER(snr), per = ComputePER(ber);
-        smp.snrDb[i]       = LinearToDb(snr);
-        smp.ber[i]         = (snr > 0.0) ? ber : 0.5;
+        smp.snrDb[i] = LinearToDb(snr);
+        smp.ber[i] = (snr > 0.0) ? ber : 0.5;
+        smp.per[i] = per;
         smp.goodputMbps[i] = (snr > 0.0) ? ComputeGoodput(per) : 0.0;
-        if (snr > bSNR) { bSNR = snr; bAP = i; }
+        if (snr > bSNR)
+        {
+            bSNR = snr;
+            bAP = i;
+        }
     }
     smp.servingAP = bAP;
     state->snrSeries.push_back(smp);
@@ -400,23 +436,29 @@ static void SampleAndDecide(SimState* state)
         {
             double H0c = ChannelGainH0(state->apPositions[state->currentAP],
                                        pos, state->fovDeg);
-            double sc  = ComputeSNR(H0c, state->cfg->ibg);
-            double mg  = std::pow(10.0, state->cfg->hysteresisDb / 10.0);
-            if (bSNR < sc * mg) doHO = false;
+            double sc = ComputeSNR(H0c, state->cfg->ibg);
+            double mg = std::pow(10.0, state->cfg->hysteresisDb / 10.0);
+            if (bSNR < sc * mg)
+                doHO = false;
         }
         if (doHO)
         {
             double b = ComputeBER(bSNR), p = ComputePER(b);
+            double expectedPackets = (p < 1.0) ? (1.0 / (1.0 - p)) : std::numeric_limits<double>::infinity();
+            double bitsPerPacket = 8.0 * PKT_SIZE_BYTES;
+            double bitRateBps = PHY_RATE_MBPS * 1e6;
+            double hoTimeEst = (expectedPackets * bitsPerPacket) / bitRateBps;
+
             state->handoverLog.push_back(
                 {now, state->currentAP, bAP,
-                 LinearToDb(bSNR), b, ComputeGoodput(p)});
+                 LinearToDb(bSNR), b, p, ComputeGoodput(p), hoTimeEst});
             state->currentAP = bAP;
         }
     }
     else if (bAP < 0 && state->currentAP >= 0)
     {
         state->handoverLog.push_back(
-            {now, state->currentAP, -1, 0.0, 0.5, 0.0});
+            {now, state->currentAP, -1, 0.0, 0.5, 1.0, 0.0, 0.0});
         state->currentAP = -1;
     }
     Simulator::Schedule(Seconds(SAMPLE_INTERVAL), &SampleAndDecide, state);
@@ -428,18 +470,20 @@ static void SampleAndDecide(SimState* state)
  * Rate = ping-pong HOs / total AP-to-AP HOs [%]
  * =========================================================================*/
 static void ComputePingPongRate(
-    const std::vector<SimState::HandoverEvent>& log,
-    int& ppCount, double& ppRate)
+    const std::vector<SimState::HandoverEvent> &log,
+    int &ppCount, double &ppRate)
 {
-    ppCount = 0; ppRate = 0.0;
+    ppCount = 0;
+    ppRate = 0.0;
     std::vector<SimState::HandoverEvent> ho2;
-    for (const auto& ev : log)
-        if (ev.from >= 0 && ev.to >= 0) ho2.push_back(ev);
+    for (const auto &ev : log)
+        if (ev.from >= 0 && ev.to >= 0)
+            ho2.push_back(ev);
     int n = (int)ho2.size();
-    if (n < 2) return;
+    if (n < 2)
+        return;
     for (int i = 0; i < n - 1; ++i)
-        if (ho2[i+1].time - ho2[i].time <= PINGPONG_WINDOW
-            && ho2[i+1].to == ho2[i].from)
+        if (ho2[i + 1].time - ho2[i].time <= PINGPONG_WINDOW && ho2[i + 1].to == ho2[i].from)
             ++ppCount;
     ppRate = (n > 0) ? 100.0 * ppCount / n : 0.0;
 }
@@ -447,56 +491,63 @@ static void ComputePingPongRate(
 /* =========================================================================
  * CSV writers
  * =========================================================================*/
-static void WriteSnrCsv(const SimState& st, const std::string& fn)
+static void WriteSnrCsv(const SimState &st, const std::string &fn)
 {
     std::ofstream f(fn);
     f << std::fixed << std::setprecision(6);
-    f << "time_s,serving_AP";
+    f << "time_s,ue_x,ue_y,serving_AP";
     for (int i = 0; i < (int)st.apPositions.size(); ++i)
         f << ",SNR_AP" << i << "_dB";
     f << "\n";
-    for (const auto& s : st.snrSeries)
+
+    for (const auto &s : st.snrSeries)
     {
-        f << s.time << "," << s.servingAP;
-        for (double v : s.snrDb) f << "," << (std::isinf(v) ? 0.0 : v);
+        f << s.time << "," << s.x << "," << s.y << "," << s.servingAP;
+        for (double v : s.snrDb)
+            f << "," << (std::isinf(v) ? 0.0 : v);
         f << "\n";
     }
 }
 
-static void WriteBerCsv(const SimState& st, const std::string& fn)
+static void WriteBerCsv(const SimState &st, const std::string &fn)
 {
     std::ofstream f(fn);
     f << std::scientific << std::setprecision(6);
     int nAP = (int)st.apPositions.size();
     f << "time_s,serving_AP";
-    for (int i = 0; i < nAP; ++i) f << ",BER_AP" << i;
-    for (int i = 0; i < nAP; ++i) f << ",Reff_AP" << i << "_Mbps";
+    for (int i = 0; i < nAP; ++i)
+        f << ",BER_AP" << i;
+    for (int i = 0; i < nAP; ++i)
+        f << ",Reff_AP" << i << "_Mbps";
     f << "\n";
-    for (const auto& s : st.snrSeries)
+    for (const auto &s : st.snrSeries)
     {
         f << s.time << "," << s.servingAP;
-        for (double v : s.ber)         f << "," << v;
-        for (double v : s.goodputMbps) f << "," << v;
+        for (double v : s.ber)
+            f << "," << v;
+        for (double v : s.goodputMbps)
+            f << "," << v;
         f << "\n";
     }
 }
 
-static void WriteHandoverCsv(const SimState& st, const std::string& fn)
+static void WriteHandoverCsv(const SimState &st, const std::string &fn)
 {
     std::ofstream f(fn);
     f << std::fixed << std::setprecision(6);
-    f << "time_s,from_AP,to_AP,SNR_new_dB,BER_new,Reff_new_Mbps\n";
-    for (const auto& ev : st.handoverLog)
+    f << "time_s,from_AP,to_AP,SNR_new_dB,BER_new,Reff_new_Mbps,ho_time_est_s\n";
+    for (const auto &ev : st.handoverLog)
         f << ev.time << ","
           << (ev.from >= 0 ? std::to_string(ev.from) : "none") << ","
-          << (ev.to   >= 0 ? std::to_string(ev.to)   : "none") << ","
-          << ev.snrDb << "," << ev.ber << "," << ev.goodputMbps << "\n";
+          << (ev.to >= 0 ? std::to_string(ev.to) : "none") << ","
+          << ev.snrDb << "," << ev.ber << "," << ev.goodputMbps << ","
+          << ev.hoTimeEst << "\n";
 }
 
 /* =========================================================================
  * RunStage2 — one handover scenario
  * =========================================================================*/
-static std::vector<double> RunStage2(const ScenarioConfig& cfg)
+static std::vector<double> RunStage2(const ScenarioConfig &cfg)
 {
     std::cout << "\n  [S2] " << cfg.name
               << "  v=" << cfg.speedMps << "m/s"
@@ -507,17 +558,19 @@ static std::vector<double> RunStage2(const ScenarioConfig& cfg)
               << "\n";
 
     std::vector<Vector> apPos = (cfg.nAPs == 0)
-        ? BuildReferenceGrid()
-        : BuildGrid(cfg.nAPs);
+                                    ? BuildReferenceGrid()
+                                    : BuildGrid(cfg.nAPs);
 
     int nAPs = (int)apPos.size();
     NodeContainer apNodes, mobileContainer;
-    apNodes.Create(nAPs); mobileContainer.Create(1);
+    apNodes.Create(nAPs);
+    mobileContainer.Create(1);
     Ptr<Node> mobileNode = mobileContainer.Get(0);
 
     MobilityHelper apMob;
     Ptr<ListPositionAllocator> apAlloc = CreateObject<ListPositionAllocator>();
-    for (const auto& p : apPos) apAlloc->Add(p);
+    for (const auto &p : apPos)
+        apAlloc->Add(p);
     apMob.SetPositionAllocator(apAlloc);
     apMob.SetMobilityModel("ns3::ConstantPositionMobilityModel");
     apMob.Install(apNodes);
@@ -531,11 +584,10 @@ static std::vector<double> RunStage2(const ScenarioConfig& cfg)
         std::string sp = std::to_string(cfg.speedMps);
         nodeMob.SetMobilityModel(
             "ns3::RandomWalk2dMobilityModel",
-            "Mode",     StringValue("Distance"),
+            "Mode", StringValue("Distance"),
             "Distance", DoubleValue(1.5),
-            "Speed",    StringValue(
-                "ns3::ConstantRandomVariable[Constant=" + sp + "]"),
-            "Bounds",   RectangleValue(Rectangle(0.0, ROOM_X, 0.0, ROOM_Y)));
+            "Speed", StringValue("ns3::ConstantRandomVariable[Constant=" + sp + "]"),
+            "Bounds", RectangleValue(Rectangle(0.0, ROOM_X, 0.0, ROOM_Y)));
         Ptr<ListPositionAllocator> sa = CreateObject<ListPositionAllocator>();
         sa->Add(Vector(ROOM_X / 2.0, ROOM_Y / 2.0, NODE_HEIGHT));
         nodeMob.SetPositionAllocator(sa);
@@ -551,18 +603,18 @@ static std::vector<double> RunStage2(const ScenarioConfig& cfg)
             mobileNode->GetObject<WaypointMobilityModel>();
         double col0 = ROOM_X / 4.0;
         wm->AddWaypoint(Waypoint(Seconds(0.0),
-            Vector(col0, 0.0, NODE_HEIGHT)));
+                                 Vector(col0, 0.0, NODE_HEIGHT)));
         wm->AddWaypoint(Waypoint(Seconds(ROOM_Y / cfg.speedMps),
-            Vector(col0, ROOM_Y, NODE_HEIGHT)));
+                                 Vector(col0, ROOM_Y, NODE_HEIGHT)));
         simTime = (ROOM_Y / cfg.speedMps) + 1.0;
     }
 
     SimState state;
     state.apPositions = apPos;
-    state.fovDeg      = cfg.fovDeg;
-    state.currentAP   = -1;
-    state.cfg         = &cfg;
-    state.mobileNode  = mobileNode;
+    state.fovDeg = cfg.fovDeg;
+    state.currentAP = -1;
+    state.cfg = &cfg;
+    state.mobileNode = mobileNode;
 
     Simulator::Schedule(Seconds(0.0), &SampleAndDecide, &state);
     Simulator::Stop(Seconds(simTime));
@@ -570,56 +622,99 @@ static std::vector<double> RunStage2(const ScenarioConfig& cfg)
     Simulator::Destroy();
 
     std::string tag = cfg.name + "_v" + std::to_string((int)cfg.speedMps);
-    WriteSnrCsv     (state, "vlc_snr_"      + tag + ".csv");
-    WriteBerCsv     (state, "vlc_ber_"      + tag + ".csv");
+    WriteSnrCsv(state, "vlc_snr_" + tag + ".csv");
+    WriteBerCsv(state, "vlc_ber_" + tag + ".csv");
     WriteHandoverCsv(state, "vlc_handover_" + tag + ".csv");
 
     // Aggregate metrics
-    double sS=0,mS=1e30,xS=-1e30,sR=0,sA=0,sB=0;
-    int ct=0, tot=(int)state.snrSeries.size();
-    for (const auto& s : state.snrSeries)
+    double sS = 0, mS = 1e30, xS = -1e30, sR = 0, sA = 0, sB = 0;
+    int ct = 0, tot = (int)state.snrSeries.size();
+    for (const auto &s : state.snrSeries)
     {
         int ap = s.servingAP;
         if (ap >= 0)
         {
-            double snr=s.snrDb[ap], reff=s.goodputMbps[ap], ber=s.ber[ap];
+            double snr = s.snrDb[ap], reff = s.goodputMbps[ap], ber = s.ber[ap];
             if (!std::isinf(snr) && snr > -100.0)
-                { sS+=snr; mS=std::min(mS,snr); xS=std::max(xS,snr); }
-            sR+=reff; sA+=reff; sB+=ber; ++ct;
+            {
+                sS += snr;
+                mS = std::min(mS, snr);
+                xS = std::max(xS, snr);
+            }
+            sR += reff;
+            sA += reff;
+            sB += ber;
+            ++ct;
         }
     }
-    double avgS  = ct>0  ? sS/ct  : 0.0;
-    double avgB  = ct>0  ? sB/ct  : 0.5;
-    double avgR  = ct>0  ? sR/ct  : 0.0;
-    double avgA  = tot>0 ? sA/tot : 0.0;
-    double cov   = tot>0 ? 100.0*ct/tot : 0.0;
-    double dis   = 100.0 - cov;
-    int    nHO   = (int)state.handoverLog.size();
-    double hpm   = simTime>0 ? nHO*60.0/simTime : 0.0;
+    double avgS = ct > 0 ? sS / ct : 0.0;
+    double avgB = ct > 0 ? sB / ct : 0.5;
+    double avgR = ct > 0 ? sR / ct : 0.0;
+    double avgA = tot > 0 ? sA / tot : 0.0;
+    double cov = tot > 0 ? 100.0 * ct / tot : 0.0;
+    double dis = 100.0 - cov;
+    int nHO = (int)state.handoverLog.size();
+    double hpm = simTime > 0 ? nHO * 60.0 / simTime : 0.0;
 
-    double sc=0.0; int cs=0; double tc=-1.0;
-    for (const auto& ev : state.handoverLog)
+    double sc = 0.0;
+    int cs = 0;
+    double tc = -1.0;
+    for (const auto &ev : state.handoverLog)
     {
-        if      (ev.to>=0 && ev.from<0) { tc=ev.time; }
-        else if (ev.to<0  && ev.from>=0)
-        { if(tc>=0.0){sc+=ev.time-tc;++cs;tc=-1.0;} }
+        if (ev.to >= 0 && ev.from < 0)
+        {
+            tc = ev.time;
+        }
+        else if (ev.to < 0 && ev.from >= 0)
+        {
+            if (tc >= 0.0)
+            {
+                sc += ev.time - tc;
+                ++cs;
+                tc = -1.0;
+            }
+        }
     }
-    if (tc>=0.0) { sc+=simTime-tc; ++cs; }
-    double ac = cs>0 ? sc/cs : 0.0;
-
-    double sg=0.0; int gs=0; double tg=0.0; bool ig=true;
-    for (const auto& ev : state.handoverLog)
+    if (tc >= 0.0)
     {
-        if (ev.to>=0 && ev.from<0)
-        { if(tg>=0.0){sg+=ev.time-tg;++gs;tg=-1.0;} ig=false; }
-        else if (ev.to<0 && ev.from>=0) { tg=ev.time; ig=true; }
+        sc += simTime - tc;
+        ++cs;
     }
-    if (ig && tg>=0.0) { sg+=simTime-tg; ++gs; }
-    double ag   = gs>0 ? sg/gs : 0.0;
-    double tC   = simTime*(cov/100.0);
-    double tG   = simTime*(dis/100.0);
+    double ac = cs > 0 ? sc / cs : 0.0;
 
-    int ppC=0; double ppR=0.0;
+    double sg = 0.0;
+    int gs = 0;
+    double tg = 0.0;
+    bool ig = true;
+    for (const auto &ev : state.handoverLog)
+    {
+        if (ev.to >= 0 && ev.from < 0)
+        {
+            if (tg >= 0.0)
+            {
+                sg += ev.time - tg;
+                ++gs;
+                tg = -1.0;
+            }
+            ig = false;
+        }
+        else if (ev.to < 0 && ev.from >= 0)
+        {
+            tg = ev.time;
+            ig = true;
+        }
+    }
+    if (ig && tg >= 0.0)
+    {
+        sg += simTime - tg;
+        ++gs;
+    }
+    double ag = gs > 0 ? sg / gs : 0.0;
+    double tC = simTime * (cov / 100.0);
+    double tG = simTime * (dis / 100.0);
+
+    int ppC = 0;
+    double ppR = 0.0;
     ComputePingPongRate(state.handoverLog, ppC, ppR);
 
     std::cout << std::fixed
@@ -630,15 +725,15 @@ static std::vector<double> RunStage2(const ScenarioConfig& cfg)
               << "  SNR=" << std::setprecision(2) << avgS << "dB"
               << "  Reff=" << std::setprecision(3) << avgA << "Mbps\n";
 
-    return { (double)nHO, avgS, (ct>0?mS:0.0), (ct>0?xS:0.0),
-             avgR, avgA, cov, dis, hpm, ac, ag, tC, tG, avgB,
-             (double)ppC, ppR };
+    return {(double)nHO, avgS, (ct > 0 ? mS : 0.0), (ct > 0 ? xS : 0.0),
+            avgR, avgA, cov, dis, hpm, ac, ag, tC, tG, avgB,
+            (double)ppC, ppR};
 }
 
 /* =========================================================================
  * main
  * =========================================================================*/
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
     bool verbose = false;
     CommandLine cmd;
@@ -661,7 +756,7 @@ int main(int argc, char* argv[])
     std::cout
         << "--------------------------------------------------------\n"
         << " Stage 1 grid: " << SCAN_RES << "x" << SCAN_RES
-        << " = " << SCAN_RES*SCAN_RES << " points\n"
+        << " = " << SCAN_RES * SCAN_RES << " points\n"
         << " Selection: coverage>=" << COVERAGE_MIN
         << "%, SNR_min>=" << SNR_MIN_DB << "dB, top-"
         << N_SELECT << " by avg SNR\n"
@@ -700,8 +795,8 @@ int main(int argc, char* argv[])
      * STAGE 1 — selection
      * ===================================================================*/
     // Filter: coverage >= COVERAGE_MIN and minSnr >= SNR_MIN_DB
-    std::vector<Stage1Result*> approved;
-    for (auto& r : s1results)
+    std::vector<Stage1Result *> approved;
+    for (auto &r : s1results)
         if (r.coverage >= COVERAGE_MIN && r.minSnr >= SNR_MIN_DB)
             approved.push_back(&r);
 
@@ -710,35 +805,37 @@ int main(int argc, char* argv[])
     // Rationale: among viable channels (SNR>0), maximise coverage first,
     // then best channel quality, then prefer simpler topology
     std::sort(approved.begin(), approved.end(),
-        [](const Stage1Result* a, const Stage1Result* b) {
-            if (std::fabs(a->coverage - b->coverage) > 1.0)
-                return a->coverage > b->coverage;
-            if (std::fabs(a->avgSnr - b->avgSnr) > 0.1)
-                return a->avgSnr > b->avgSnr;
-            return a->nAPs < b->nAPs;
-        });
+              [](const Stage1Result *a, const Stage1Result *b)
+              {
+                  if (std::fabs(a->coverage - b->coverage) > 1.0)
+                      return a->coverage > b->coverage;
+                  if (std::fabs(a->avgSnr - b->avgSnr) > 0.1)
+                      return a->avgSnr > b->avgSnr;
+                  return a->nAPs < b->nAPs;
+              });
 
     int nSel = std::min(N_SELECT, (int)approved.size());
-    for (int i = 0; i < nSel; ++i) approved[i]->selected = true;
+    for (int i = 0; i < nSel; ++i)
+        approved[i]->selected = true;
 
     // Write Stage 1 CSV
-    for (const auto& r : s1results)
+    for (const auto &r : s1results)
         s1csv << r.fovDeg << "," << r.nAPs << ","
               << r.coverage << "," << r.avgSnr << ","
-              << r.minSnr   << "," << r.overlapPct << ","
+              << r.minSnr << "," << r.overlapPct << ","
               << (r.c1Satisfied ? 1 : 0) << ","
-              << (r.selected    ? 1 : 0) << "\n";
+              << (r.selected ? 1 : 0) << "\n";
     s1csv.close();
 
     std::cout << "\n[STAGE 1] Results:\n";
     std::cout << "  " << approved.size()
               << " combinations passed the filter.\n";
     std::cout << "  Selected for Stage 2:\n";
-    std::vector<Stage1Result*> selected;
+    std::vector<Stage1Result *> selected;
     for (int i = 0; i < nSel; ++i)
     {
         selected.push_back(approved[i]);
-        std::cout << "   S" << (i+1) << ": FOV="
+        std::cout << "   S" << (i + 1) << ": FOV="
                   << std::fixed << std::setprecision(1) << approved[i]->fovDeg
                   << "deg  nAPs=" << approved[i]->nAPs
                   << "  cov=" << std::setprecision(1) << approved[i]->coverage
@@ -753,14 +850,16 @@ int main(int argc, char* argv[])
                   << "  Relaxing to top-3 by coverage for Stage 2.\n";
         // Fallback: sort by positive-SNR indicator first, then coverage, then SNR
         std::sort(s1results.begin(), s1results.end(),
-            [](const Stage1Result& a, const Stage1Result& b){
-                bool aPos = a.minSnr > 0.0, bPos = b.minSnr > 0.0;
-                if (aPos != bPos) return aPos > bPos;
-                if (std::fabs(a.coverage - b.coverage) > 1.0)
-                    return a.coverage > b.coverage;
-                return a.avgSnr > b.avgSnr;
-            });
-        for (int i = 0; i < std::min(N_SELECT,(int)s1results.size()); ++i)
+                  [](const Stage1Result &a, const Stage1Result &b)
+                  {
+                      bool aPos = a.minSnr > 0.0, bPos = b.minSnr > 0.0;
+                      if (aPos != bPos)
+                          return aPos > bPos;
+                      if (std::fabs(a.coverage - b.coverage) > 1.0)
+                          return a.coverage > b.coverage;
+                      return a.avgSnr > b.avgSnr;
+                  });
+        for (int i = 0; i < std::min(N_SELECT, (int)s1results.size()); ++i)
         {
             s1results[i].selected = true;
             selected.push_back(&s1results[i]);
@@ -774,18 +873,18 @@ int main(int argc, char* argv[])
 
     // Reference topology [2]: FOV 28.5, 6 APs (nAPs=0)
     std::vector<ScenarioConfig> scenarios;
-    const std::vector<double> SPEEDS = { 1.0, 3.0, 8.0 };
+    const std::vector<double> SPEEDS = {1.0, 3.0, 8.0};
 
-    auto addGroup = [&](const std::string& prefix,
+    auto addGroup = [&](const std::string &prefix,
                         double fov, int nap,
                         bool rw)
     {
         for (double v : SPEEDS)
         {
             scenarios.push_back(
-                {prefix+"_noHyst", v, IBG_STANDARD, 0.0,           fov, nap, rw});
+                {prefix + "_noHyst", v, IBG_STANDARD, 0.0, fov, nap, rw});
             scenarios.push_back(
-                {prefix+"_Hyst",   v, IBG_STANDARD, HYSTERESIS_DB, fov, nap, rw});
+                {prefix + "_Hyst", v, IBG_STANDARD, HYSTERESIS_DB, fov, nap, rw});
         }
     };
 
@@ -796,9 +895,9 @@ int main(int argc, char* argv[])
     // Selected cases S1, S2, S3: Waypoint + RandomWalk
     for (int i = 0; i < (int)selected.size(); ++i)
     {
-        std::string prefix = "S" + std::to_string(i+1);
-        addGroup(prefix+"_WP", selected[i]->fovDeg, selected[i]->nAPs, false);
-        addGroup(prefix+"_RW", selected[i]->fovDeg, selected[i]->nAPs, true);
+        std::string prefix = "S" + std::to_string(i + 1);
+        addGroup(prefix + "_WP", selected[i]->fovDeg, selected[i]->nAPs, false);
+        addGroup(prefix + "_RW", selected[i]->fovDeg, selected[i]->nAPs, true);
     }
 
     std::cout << "  Total scenarios: " << scenarios.size() << "\n";
@@ -817,7 +916,7 @@ int main(int argc, char* argv[])
              "t_connected_s,t_disconnected_s,"
              "avg_conn_session_s,avg_gap_session_s\n";
 
-    for (const auto& cfg : scenarios)
+    for (const auto &cfg : scenarios)
     {
         std::vector<double> r = RunStage2(cfg);
         s2csv << cfg.name << "," << cfg.speedMps << ","
@@ -825,14 +924,14 @@ int main(int argc, char* argv[])
               << (cfg.nAPs == 0 ? 6 : cfg.nAPs) << ","
               << (cfg.useRandomWalk ? "RandomWalk2D" : "Waypoint") << ","
               << cfg.hysteresisDb << ","
-              << (int)r[0]  << "," << r[8]  << ","   // HO, HO/min
-              << (int)r[14] << "," << r[15] << ","   // PP count, PP rate
-              << r[1] << "," << r[2] << "," << r[3] << ","   // SNR avg/min/max
-              << std::scientific << r[13] << std::fixed << ","// BER
-              << r[4] << "," << r[5] << ","           // Reff active/overall
-              << r[6] << "," << r[7] << ","           // coverage/disconnected
-              << r[11] << "," << r[12] << ","         // t_conn/t_gap
-              << r[9]  << "," << r[10] << "\n";      // sess_conn/sess_gap
+              << (int)r[0] << "," << r[8] << ","               // HO, HO/min
+              << (int)r[14] << "," << r[15] << ","             // PP count, PP rate
+              << r[1] << "," << r[2] << "," << r[3] << ","     // SNR avg/min/max
+              << std::scientific << r[13] << std::fixed << "," // BER
+              << r[4] << "," << r[5] << ","                    // Reff active/overall
+              << r[6] << "," << r[7] << ","                    // coverage/disconnected
+              << r[11] << "," << r[12] << ","                  // t_conn/t_gap
+              << r[9] << "," << r[10] << "\n";                 // sess_conn/sess_gap
     }
     s2csv.close();
 
