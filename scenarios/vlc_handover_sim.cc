@@ -544,6 +544,16 @@ static void WriteHandoverCsv(const SimState &st, const std::string &fn)
           << ev.hoTimeEst << "\n";
 }
 
+static void WriteApCsv(const std::vector<Vector> &apPos, const std::string &fn)
+{
+    std::ofstream f(fn);
+    f << "ap_id,ap_x,ap_y,ap_z\n";
+    for (size_t i = 0; i < apPos.size(); i++)
+    {
+        f << i << "," << apPos[i].x << "," << apPos[i].y << "," << apPos[i].z << "\n";
+    }
+}
+
 /* =========================================================================
  * RunStage2 — one handover scenario
  * =========================================================================*/
@@ -625,6 +635,7 @@ static std::vector<double> RunStage2(const ScenarioConfig &cfg)
     WriteSnrCsv(state, "vlc_snr_" + tag + ".csv");
     WriteBerCsv(state, "vlc_ber_" + tag + ".csv");
     WriteHandoverCsv(state, "vlc_handover_" + tag + ".csv");
+    WriteApCsv(state.apPositions, "vlc_aps_" + tag + ".csv");
 
     // Aggregate metrics
     double sS = 0, mS = 1e30, xS = -1e30, sR = 0, sA = 0, sB = 0;
