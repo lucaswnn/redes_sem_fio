@@ -560,9 +560,9 @@ static void WriteApCsv(const std::vector<Vector> &apPos, const std::string &fn)
  * =========================================================================*/
 static std::vector<double> RunStage2(const ScenarioConfig &cfg)
 {
-    ns3::Config::SetDefault("ns3::SeedManager::Seed", ns3::UintegerValue(42));
-    ns3::Config::SetDefault("ns3::SeedManager::Run", ns3::UintegerValue(1));
-    
+    ns3::SeedManager::SetSeed(42);
+    ns3::SeedManager::SetRun(1);
+
     std::cout << "\n  [S2] " << cfg.name
               << "  v=" << cfg.speedMps << "m/s"
               << "  FOV=" << cfg.fovDeg << "deg"
@@ -623,7 +623,7 @@ static std::vector<double> RunStage2(const ScenarioConfig &cfg)
         simTime = (ROOM_Y / cfg.speedMps) + 1.0;
     }
     int64_t streamIndex = 1; 
-    mobility.AssignStreams(mobileContainer, streamIndex);
+    nodeMob.AssignStreams(mobileContainer, streamIndex);
 
     SimState state;
     state.apPositions = apPos;
