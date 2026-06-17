@@ -62,6 +62,7 @@
 #include "ns3/core-module.h"
 #include "ns3/network-module.h"
 #include "ns3/mobility-module.h"
+#include "ns3/rng-seed-manager.h"
 #include <algorithm>
 #include <cmath>
 #include <fstream>
@@ -559,6 +560,9 @@ static void WriteApCsv(const std::vector<Vector> &apPos, const std::string &fn)
  * =========================================================================*/
 static std::vector<double> RunStage2(const ScenarioConfig &cfg)
 {
+    ns3::Config::SetDefault("ns3::SeedManager::Seed", ns3::UintegerValue(42));
+    ns3::Config::SetDefault("ns3::SeedManager::Run", ns3::UintegerValue(1));
+    
     std::cout << "\n  [S2] " << cfg.name
               << "  v=" << cfg.speedMps << "m/s"
               << "  FOV=" << cfg.fovDeg << "deg"
@@ -618,6 +622,8 @@ static std::vector<double> RunStage2(const ScenarioConfig &cfg)
                                  Vector(col0, ROOM_Y, NODE_HEIGHT)));
         simTime = (ROOM_Y / cfg.speedMps) + 1.0;
     }
+    int64_t streamIndex = 1; 
+    mobility.AssignStreams(mobileContainer, streamIndex);
 
     SimState state;
     state.apPositions = apPos;
